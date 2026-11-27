@@ -966,7 +966,7 @@ ${pb?`<p class="hint">「${esc(nm(b))}」は親タスクのため、入口の子
 <label class="chk" style="margin-top:6px"><input type="checkbox" id="r-path" checked> 予定パスも引く</label>
 <label class="chk" style="margin-top:6px;margin-left:14px" id="r-kd-l"><input type="checkbox" id="r-kd"> すでにある指定日も候補として残す（「前工程の翌日」と「指定日」のどちらか遅い方、など）</label>
 <div id="r-dyn"></div>
-<div class="mf"><button class="btn" id="r-swap">基準と入れ替える</button><span class="sp"></span><button class="btn" id="r-cancel">中止</button><button class="btn pri" id="r-ok">関連付ける</button></div>`);
+<div class="mf"><button class="btn" id="r-swap">基準と入れ替える</button><span class="sp"></span><button class="btn" id="r-cancel">中止</button><button class="btn pri" id="r-ok" title="Enter">関連付ける（Enter）</button></div>`);
   const g=k=>$('#r-'+k);
   const keyOf=()=>cfg.side==='deadline'?'deadline':cfg.side+'Rule';
   const kdSync=()=>{const has=bs.some(x=>byId[x][keyOf()]&&byId[x][keyOf()].date);g('kd-l').style.display=has?'':'none';const r0=byId[bs[0]][keyOf()];cfg.keepDate=has&&(cfg.side==='deadline'||!!(r0&&r0.type==='rel'&&r0.date));g('kd').checked=cfg.keepDate};
@@ -992,6 +992,11 @@ ${pb?`<p class="hint">「${esc(nm(b))}」は親タスクのため、入口の子
     if(!(k.startsWith('order:')||k.startsWith('down:')))for(const key of Object.keys(res))if(key.startsWith('order:')||key.startsWith('down:'))delete res[key];draw()};
   g('cancel').onclick=()=>{closeModal();renderChart()};
   g('swap').onclick=()=>{const h=relHard(b,a);if(h){toast(h);return}closeModal();mode.last=b;openRel(b,a)};
+  /* Enter で「関連付ける」（日数の欄は入力中の値を反映してから。ボタン上の Enter と日本語入力の確定は除く） */
+  $('#mbox').onkeydown=e=>{if(e.key!=='Enter'||e.isComposing||e.keyCode===229||e.shiftKey||e.ctrlKey||e.altKey)return;const el=e.target;if(el.tagName==='BUTTON'||el.tagName==='TEXTAREA')return;
+    e.preventDefault();if(el===g('off')){cfg.off=Math.round(+g('off').value||0);g('off').value=cfg.off;draw()}
+    if(g('ok').disabled){toast('矛盾が解消されていないため、まだ関連付けできません');return}g('ok').click()};
+  $('#mbox').tabIndex=-1;setTimeout(()=>{if(!$('#mbox').contains(document.activeElement))$('#mbox').focus({preventScroll:true})},0);
   g('ok').onclick=()=>{const r=analyze(cfg,res);if(!r.ok){draw();return}
     const rev=(cfg.side==='end'||cfg.side==='deadline')&&cfg.base==='start';
     mutate(()=>{const drop=[];
@@ -1106,7 +1111,7 @@ lbody.addEventListener('wheel',e=>{if(e.shiftKey)return;rbody.scrollTop+=e.delta
 $('#split').addEventListener('pointerdown',e=>{sdrag={x:e.clientX,w:$('#left').getBoundingClientRect().width};e.preventDefault()});
 
 /* ---------- モーダル ---------- */
-function openModal(html){const mb=$('#mbox');mb.onchange=mb.onclick=null;mb.innerHTML=html;$('#modal').classList.add('open');modalOpen=true}
+function openModal(html){const mb=$('#mbox');mb.onchange=mb.onclick=mb.onkeydown=null;mb.innerHTML=html;$('#modal').classList.add('open');modalOpen=true}
 function closeModal(){$('#modal').classList.remove('open');modalOpen=false}
 $('#modal').addEventListener('pointerdown',e=>{if(e.target.id==='modal')closeModal()});
 function refOptions(id){const sub=subtreeIds(id);const anc=new Set();let p=byId[id]?.parent;while(p){anc.add(p);p=byId[p]?.parent}
