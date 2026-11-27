@@ -733,10 +733,11 @@ const ent=(ref,off=1,base='end')=>({ref,base,offset:off});
 const rel=(refs,mode='max')=>({type:'rel',mode,refs:Array.isArray(refs)?refs:[refs]});
 function migrateRule(r){if(r&&r.type==='rel'&&!Array.isArray(r.refs))return{type:'rel',mode:r.mode||'max',refs:r.ref?[{ref:r.ref,base:r.base||'end',offset:+r.offset||0}]:[]};return r}
 const KOJI0={masterKey:'',place:'',from:'',to:'',rainRate:0.9,jigyo:'',kubun:'',kyokuCode:'',kyokuName:'',taishoName:'',A:'',b:'',yoyu:'',prep:'',clean:''};
-/* 余裕期間・準備期間・後片付け期間：工事区分のレベルに置く「日数だけの工程」（frame）。
-   日数は工事情報（余裕期間・準備期間・後片付け期間）。雨休率・作業不能期間は使わず暦日で数える。
-   余裕期間は工期（自）から、準備期間は余裕期間の翌日から、後片付け期間はほかの工程がすべて終わった翌日から */
-const FRAME={yoyu:'余裕期間',prep:'準備期間',clean:'後片付け期間'};
+/* 余裕期間・準備工・跡片付け：工事区分のレベルに置く「日数だけの工程」（frame）。
+   日数は工事情報（余裕期間・準備工・跡片付け）。雨休率・作業不能期間は使わず暦日で数える。
+   余裕期間は工期（自）から、準備工は余裕期間の翌日から、跡片付けはほかの工程がすべて終わった翌日から */
+const FRAME={yoyu:'余裕期間',prep:'準備工',clean:'跡片付け'};
+const FRAME_OLD={prep:'準備期間',clean:'後片付け期間'};
 const frameTask=(f,id)=>T(id||uid(),FRAME[f],null,{frame:f,durSrc:'fixed',rainRate:0,restricted:false,qty:'',unit:'',work:'',dur:1});
 function ensureFrame(){
   const got={};for(const f in FRAME){got[f]=state.tasks.find(t=>t.frame===f);if(!got[f]){got[f]=frameTask(f);state.tasks.push(got[f])}Object.assign(got[f],{parent:null,restricted:false,rainRate:0})}
@@ -776,7 +777,7 @@ function fill(o){
   return{title:o.title??'',sample:!!o.sample,savedAt:o.savedAt||0,
     settings:Object.assign({},d.settings,o.settings||{},{colors:Object.assign({},d.settings.colors,(o.settings||{}).colors||{}),koji:Object.assign({},KOJI0,(o.settings||{}).koji||{}),periods:(o.settings&&o.settings.periods)||[]}),
     view:Object.assign({},d.view,o.view||{}),
-    tasks:(o.tasks||[]).map(t=>{const x=Object.assign(T(t.id||uid(),'',null),t);if(t.durSrc==null)x.durSrc='fixed';x.startRule=migrateRule(x.startRule);x.endRule=migrateRule(x.endRule);return x}),links:o.links||[]};
+    tasks:(o.tasks||[]).map(t=>{const x=Object.assign(T(t.id||uid(),'',null),t);if(t.durSrc==null)x.durSrc='fixed';if(x.frame&&FRAME_OLD[x.frame]===x.name)x.name=FRAME[x.frame];x.startRule=migrateRule(x.startRule);x.endRule=migrateRule(x.endRule);return x}),links:o.links||[]};
 }
 const dataObj=()=>({title:state.title,sample:state.sample,savedAt:state.savedAt,settings:state.settings,view:state.view,tasks:state.tasks,links:state.links});
 
@@ -877,7 +878,7 @@ function comp(t,vis){
     else if(t.frame){
       const K=state.settings.koji,ff=f=>state.tasks.find(x=>x.frame===f);let s=null;
       if(t.frame==='yoyu'){
-        /* 準備期間が逆算で決まっているとき（アンカーより前）は、余裕期間も準備期間の前に逆算で置く */
+        /* 準備工が逆算で決まっているとき（アンカーより前）は、余裕期間も準備工の前に逆算で置く */
         const p=ff('prep'),P=p&&REVIN[p.id]&&!p.pin?comp(p,vis):null;
         if(P&&P.back){pe=P.ps-1;ps=startFrom(pe,dur,false);back=[{h:p.id,key:'startRule',ref:t.id,base:'end',off:1}]}
         else s=parse(K.from)??parse(t.startRule&&t.startRule.date)??todayN}
@@ -1136,6 +1137,10 @@ function renderHead(){
     else if(w===1)tx+=`<text x="${x+2}" y="40" class="hd">${dd}</text>`;
     if(DW>=10||w===1)s+=`<line x1="${x}" x2="${x}" y1="20" y2="52" class="${w===1?'gl2':'gl'}"/>`}
   s+=tx;
+  {const K=state.settings.koji,k1=parse(K.from),k2=parse(K.to);
+    const mk=(x,t,anc)=>`<line x1="${x}" x2="${x}" y1="0" y2="52" class="kki"/><text x="${x+(anc==='end'?-3:3)}" y="49" class="kkt"${anc==='end'?' text-anchor="end"':''}>${t}</text>`;
+    if(k1!=null&&k1>=R.from&&k1<=R.to)s+=mk(X(k1),'工期始','start');
+    if(k2!=null&&k2>=R.from&&k2<=R.to)s+=mk(X(k2+1),'工期末','end')}
   hsvg.setAttribute('width',W+40);hsvg.setAttribute('height',52);hsvg.innerHTML=s;stickMonths();
 }
 function stickMonths(){const L=rbody.scrollLeft;for(const t of hsvg.querySelectorAll('.mt')){const x0=+t.dataset.x0,x1=+t.dataset.x1;t.setAttribute('x',Math.max(x0+6,Math.min(L+6,x1-80)))}}
@@ -2039,8 +2044,8 @@ function openKoji(){
 <div class="g2" style="margin-top:8px">${f('from','工期（自）',K.from,'date')}${f('to','工期（至）',K.to,'date')}<label>工期日数<input id="k-days" value="${k1!=null&&k2!=null?(k2-k1+1)+'日':''}" disabled></label>${f('rate','雨休率（既定）',K.rainRate,'number',' step="any" min="0"')}</div>
 <div class="g2" style="margin-top:8px">${f('jigyo','事業区分',K.jigyo)}${f('kubun','工事区分',K.kubun)}${f('kyokuCode','整備局コード',K.kyokuCode)}${f('kyokuName','整備局',K.kyokuName)}</div>
 <h3>対象工事区分</h3>
-<div class="g2">${f('taishoName','名称',K.taishoName)}${f('A','係数 A',K.A,'number',' step="any"')}${f('b','係数 b',K.b,'number',' step="any"')}${f('yoyu','余裕期間（日）',K.yoyu,'number')}${f('prep','準備期間（日）',K.prep,'number')}${f('clean','後片付け期間（日）',K.clean,'number')}</div>
-${ad?`<div class="rr"><label><input type="checkbox" id="k-frame"${state.tasks.filter(t=>t.frame).length<3?' checked':''}> 余裕期間・準備期間・後片付け期間の工程を工事区分のレベルに置く（先頭に余裕期間・準備期間、最後に後片付け期間。日数は上の値、雨休率・作業不能期間は使いません）</label></div>`:''}
+<div class="g2">${f('taishoName','名称',K.taishoName)}${f('A','係数 A',K.A,'number',' step="any"')}${f('b','係数 b',K.b,'number',' step="any"')}${f('yoyu','余裕期間（日）',K.yoyu,'number')}${f('prep','準備工（日）',K.prep,'number')}${f('clean','跡片付け（日）',K.clean,'number')}</div>
+${ad?`<div class="rr"><label><input type="checkbox" id="k-frame"${state.tasks.filter(t=>t.frame).length<3?' checked':''}> 余裕期間・準備工・跡片付けの工程を工事区分のレベルに置く（先頭に余裕期間・準備工、最後に跡片付け。日数は上の値、雨休率・作業不能期間は使いません）</label></div>`:''}
 <h3>日当りマスタ</h3>
 <div class="g2"><label>使う年度<select id="k-master"${dis}><option value="">最新の年度（自動）</option></select></label></div>
 <p class="hint">雨休率は、施工日数に対して見込む雨天・休日の割合です（例：0.9 → 施工日数10日に対し雨休9日）。タスクごとに変える場合は、そのタスクの詳細設定で入力します。対象工事区分の項目は、XMLへの出力用に保持します。</p>
