@@ -362,20 +362,30 @@ function T(id,name,parent,o={}){return Object.assign({id,name,parent,startRule:{
 const ent=(ref,off=1,base='end')=>({ref,base,offset:off});
 const rel=(refs,mode='max')=>({type:'rel',mode,refs:Array.isArray(refs)?refs:[refs]});
 function migrateRule(r){if(r&&r.type==='rel'&&!Array.isArray(r.refs))return{type:'rel',mode:r.mode||'max',refs:r.ref?[{ref:r.ref,base:r.base||'end',offset:+r.offset||0}]:[]};return r}
-const KOJI0={masterKey:'',place:'',from:'',to:'',rainRate:0.9,jigyo:'',kubun:'',kyokuCode:'',kyokuName:'',taishoName:'',A:'',b:'',prep:'',clean:''};
+const KOJI0={masterKey:'',place:'',from:'',to:'',rainRate:0.9,jigyo:'',kubun:'',kyokuCode:'',kyokuName:'',taishoName:'',A:'',b:'',yoyu:'',prep:'',clean:''};
+/* 余裕期間・準備期間・後片付け期間：工事区分のレベルに置く「日数だけの工程」（frame）。
+   日数は工事情報（余裕期間・準備期間・後片付け期間）。雨休率・作業不能期間は使わず暦日で数える。
+   余裕期間は工期（自）から、準備期間は余裕期間の翌日から、後片付け期間はほかの工程がすべて終わった翌日から */
+const FRAME={yoyu:'余裕期間',prep:'準備期間',clean:'後片付け期間'};
+const frameTask=(f,id)=>T(id||uid(),FRAME[f],null,{frame:f,durSrc:'fixed',rainRate:0,restricted:false,qty:'',unit:'',work:'',dur:1});
+function ensureFrame(){
+  const got={};for(const f in FRAME){got[f]=state.tasks.find(t=>t.frame===f);if(!got[f]){got[f]=frameTask(f);state.tasks.push(got[f])}Object.assign(got[f],{parent:null,restricted:false,rainRate:0})}
+  const rest=state.tasks.filter(t=>!t.frame);
+  state.tasks=[got.yoyu,got.prep,...rest,got.clean];
+}
 function sample(){
   const Y=(q,d,o)=>Object.assign({durSrc:'yield',qty:q,daily:d},o);
   return{title:'○○川 河道掘削工事',sample:true,savedAt:0,
     settings:{sat:true,sun:true,nat:true,periods:[{name:'河川の出水期',from:'2026-06-01',to:'2026-10-31',yearly:true,y0:2026,y1:9999}],
-      koji:Object.assign({},KOJI0,{place:'○○県○○市地先',from:'2027-01-12',to:'2027-12-24',rainRate:0.9,jigyo:'河川改修',kubun:'築堤･護岸',kyokuCode:'86',kyokuName:'近畿地方整備局',taishoName:'河川工事',A:11.02,b:0.173,prep:40,clean:20}),
+      koji:Object.assign({},KOJI0,{place:'○○県○○市地先',from:'2027-01-12',to:'2027-12-24',rainRate:0.9,jigyo:'河川改修',kubun:'築堤･護岸',kyokuCode:'86',kyokuName:'近畿地方整備局',taishoName:'河川工事',A:11.02,b:0.173,yoyu:30,prep:40,clean:20}),
       colors:{plan:'#2563c9',act:'#ef7d1a',parent:'#3a4452',linkPlan:'#2563c9',linkAct:'#c2410c',crit:'#e11d48'}},
     view:{show:'both',showCrit:true,sort:'input',showPlanLinks:true,showActLinks:true,lblName:true,lblStart:true,lblEnd:true,lblAct:true,lblWait:true,dw:14,leftW:640,kind:'plan',shadeWeek:false},
     tasks:[
-      T('p1','準備工',null,{qty:1,unit:'式'}),
-      T('t11','準備工','p1',{startRule:{type:'fixed',date:'2027-01-12'},qty:1,unit:'式',work:30,rainRate:0,restricted:false,proc:'01 準備'}),
+      frameTask('yoyu','fyoyu'),
+      frameTask('prep','fprep'),
       T('p2','河川土工',null,{qty:1,unit:'式'}),
       T('p21','伐木除根工','p2',{qty:1,unit:'式'}),
-      T('t211','伐木・伐竹','p21',Y(17900,439,{spec:'伐竹',unit:'m2',parties:3,startRule:rel(ent('t11')),proc:'02 伐木除根',buk:[{code:'CB320510',eda:'0004',name:'伐木・伐竹（伐木除根）',unit:'1ｍ２',daily:439,cond:'樹木・竹の区分　樹木密集度及び施工区分=伐竹',J:[['J01','5']]}]})),
+      T('t211','伐木・伐竹','p21',Y(17900,439,{spec:'伐竹',unit:'m2',parties:3,startRule:rel(ent('fprep')),proc:'02 伐木除根',buk:[{code:'CB320510',eda:'0004',name:'伐木・伐竹（伐木除根）',unit:'1ｍ２',daily:439,cond:'樹木・竹の区分　樹木密集度及び施工区分=伐竹',J:[['J01','5']]}]})),
       T('t212','除根整地','p21',Y(21500,534.286,{unit:'m2',parties:3,startRule:rel(ent('t211')),proc:'02 伐木除根'})),
       T('p22','掘削工(ICT)','p2',{qty:1,unit:'式'}),
       T('t221','掘削(ICT)','p22',Y(8500,350,{spec:'土砂 ｵｰﾌﾟﾝｶｯﾄ 障害無し',unit:'m3',startRule:rel([ent('t212'),ent('t31')]),proc:'03 掘削',buk:[{code:'CB210120',eda:'0003',name:'掘削（ＩＣＴ）',unit:'1ｍ３',daily:350,cond:'土質=土砂; 施工方法=オープンカット; 障害の有無=無し; 施工数量=10,000m3以上50,000m3未満',J:[['J01','1'],['J02','1'],['J03','1'],['J04','3']]}]})),
@@ -383,13 +393,12 @@ function sample(){
       T('p23','法面整形工(ICT)','p2',{qty:1,unit:'式'}),
       T('t231','法面整形(切土部)(ICT)','p23',Y(880,154,{spec:'ﾚｷ質土､砂及び砂質土､粘性土',unit:'m2',startRule:rel(ent('t221')),proc:'04 法面整形',note:'途中で出水期に入るため、出水期明けに再開'})),
       T('p3','仮設工',null,{qty:1,unit:'式'}),
-      T('t31','敷鉄板','p3',{spec:'22×1,524×6,096（mm） 設置',qty:3020,unit:'m2',work:9,startRule:rel(ent('t11')),proc:'05 仮設'}),
-      T('p4','後片付け工',null,{qty:1,unit:'式'}),
-      T('t41','後片付け工','p4',{qty:1,unit:'式',work:20,rainRate:0,restricted:false,startRule:rel(ent('t231')),proc:'06 後片付け'})
+      T('t31','敷鉄板','p3',{spec:'22×1,524×6,096（mm） 設置',qty:3020,unit:'m2',work:9,startRule:rel(ent('fprep')),proc:'05 仮設'}),
+      frameTask('clean','fclean')
     ],
     links:[
-      {id:'l1',from:'t11',to:'t211',kind:'plan'},{id:'l2',from:'t211',to:'t212',kind:'plan'},{id:'l3',from:'t212',to:'t221',kind:'plan'},{id:'l4',from:'t11',to:'t31',kind:'plan'},
-      {id:'l5',from:'t31',to:'t221',kind:'plan'},{id:'l6',from:'t221',to:'t231',kind:'plan'},{id:'l7',from:'t231',to:'t41',kind:'plan'}
+      {id:'l1',from:'fprep',to:'t211',kind:'plan'},{id:'l2',from:'t211',to:'t212',kind:'plan'},{id:'l3',from:'t212',to:'t221',kind:'plan'},{id:'l4',from:'fprep',to:'t31',kind:'plan'},
+      {id:'l5',from:'t31',to:'t221',kind:'plan'},{id:'l6',from:'t221',to:'t231',kind:'plan'},{id:'l7',from:'t231',to:'fclean',kind:'plan'}
     ]};
 }
 function fill(o){
@@ -407,6 +416,7 @@ const calOf=t=>t.restricted!==false;
 /* 日数：施工日数＝数量÷日当り施工量、雨休日数＝切り上げ(施工日数×雨休率)、暦日数＝切り上げ((施工日数＋雨休日数)÷班数) */
 const rateOf=t=>{const v=t.rainRate;return v===''||v==null||!isFinite(+v)?(+state.settings.koji.rainRate||0):+v};
 function calcDur(t){
+  if(t.frame){const kv=Math.round(+state.settings.koji[t.frame]||0);return{dur:kv>0?kv:Math.max(1,Math.round(+t.dur||1)),work:null,rain:0,rate:0,pt:1,src:'frame'}}
   const rate=rateOf(t),pt=Math.max(1,Math.round(+t.parties||1)),fix=Math.max(1,Math.round(+t.dur||1));
   if(t.durSrc==='fixed')return{dur:fix,work:null,rain:null,rate,pt,src:'fixed'};
   let work=null,err='';
@@ -419,7 +429,7 @@ function calcDur(t){
   return{dur:Math.max(1,Math.ceil((work+rain)/pt-1e-9)),work,rain,rate,pt,src:t.durSrc};
 }
 const f2=v=>v==null||!isFinite(v)?'':(Math.round(v*100)/100).toString();
-function durText(t,c){if(!c||c.parent)return'';if(c.anchor==='both')return'開始日と完了日の両方で拘束しているため、暦日数は日付から決まります';
+function durText(t,c){if(!c||c.parent)return'';if(t.frame)return`日数だけの工程：工事情報の${FRAME[t.frame]} ${c.dur}日（雨休率・作業不能期間は使わず暦日で数えます）`;if(c.anchor==='both')return'開始日と完了日の両方で拘束しているため、暦日数は日付から決まります';
   if(c.src==='fixed')return`暦日数 ${c.dur}日（直接入力）`;if(c.work==null)return c.derr||'';
   const nb=(t.buk||[]).filter(b=>b.use&&+b.daily>0);
   return`${c.src==='yield'?`数量 ${t.qty}÷日当り施工量 ${t.daily}＝`:c.src==='buk'?`歩掛 ${nb.map(b=>`${b.name}（日当り ${b.daily}）`).join('＋')} から `:''}施工日数 ${f2(c.work)}日＋雨休 ${c.rain}日（雨休率 ${c.rate}）${c.pt>1?`÷班数 ${c.pt}`:''} → 暦日数 ${c.dur}日`}
@@ -494,9 +504,21 @@ function comp(t,vis){
       if(isFinite(ps1))pe=Math.min(pe,endFrom(snapB(ps1,cal),dur,cal));
       ps=startFrom(pe,dur,cal);
     }
+    else if(t.frame){
+      const K=state.settings.koji,ff=f=>state.tasks.find(x=>x.frame===f);let s=null;
+      if(t.frame==='yoyu'){
+        /* 準備期間が逆算で決まっているとき（アンカーより前）は、余裕期間も準備期間の前に逆算で置く */
+        const p=ff('prep'),P=p&&REVIN[p.id]&&!p.pin?comp(p,vis):null;
+        if(P&&P.back){pe=P.ps-1;ps=startFrom(pe,dur,false);back=[{h:p.id,key:'startRule',ref:t.id,base:'end',off:1}]}
+        else s=parse(K.from)??parse(t.startRule&&t.startRule.date)??todayN}
+      else if(t.frame==='prep'){const y=ff('yoyu'),Y=y&&comp(y,vis);s=Y?Y.pe+1:(parse(K.from)??todayN)}
+      else{let m=-Infinity;for(const x of state.tasks){if(x.frame==='clean'||(kids[x.id]||[]).length)continue;const X=comp(x,vis);if(X)m=Math.max(m,X.pe)}s=isFinite(m)?m+1:(parse(K.from)??todayN)}
+      if(s!=null){ps=s;pe=endFrom(ps,dur,false)}
+    }
     else if(t.anchor==='end'){let e=resolve(t.endRule,cal,vis,t.id,'endRule');if(e==null){e=todayN;err='完了日の基準を解決できません（循環参照または未設定）'}pe=snapB(e,cal);ps=startFrom(pe,dur,cal)}
     else if(t.anchor==='both'){let s=resolve(t.startRule,cal,vis,t.id,'startRule'),e=resolve(t.endRule,cal,vis,t.id,'endRule');if(s==null&&e!=null)s=startFrom(snapB(e,cal),dur,cal);if(s==null){s=todayN;err='開始日の基準を解決できません'}if(e==null){e=s;err='完了日の基準を解決できません'}ps=snapF(s,cal);pe=snapB(e,cal);if(pe<ps){pe=ps;err='完了日が開始日より前になっています'}}
     else{let s=resolve(t.startRule,cal,vis,t.id,'startRule');if(s==null){s=todayN;err='開始日の基準を解決できません（循環参照または未設定）'}ps=snapF(s,cal);pe=endFrom(ps,dur,cal)}
+    {const k1=parse(state.settings.koji.from);if(!err&&k1!=null&&ps<k1)err=`工期（自） ${fmt(k1)} より前に始まります（${k1-ps}日）`}
     const as=parse(t.as),ae=as!=null?parse(t.ae):null;
     r={parent:false,ps,pe,dur:t.anchor==='both'?span(ps,pe,cal):dur,prog:clamp(+t.prog||0,0,100),as,ae,aeDraw:as!=null?(ae!=null?Math.max(ae,as):Math.max(as,todayN)):null,cal,err,work:D.work,rain:D.rain,rate:D.rate,pt:D.pt,src:D.src,derr:D.err||'',anchor:t.anchor,back,pin:!!t.pin};
     r.segs=[[ps,pe]];r.asegs=as!=null?[[as,r.aeDraw]]:[];
@@ -536,6 +558,10 @@ function critPath(){
     const[id,side]=stack.pop(),key0=id+':'+side;if(seen.has(key0))continue;seen.add(key0);
     const t=byId[id],c=C[id];if(!t||!c)continue;out.bars.add(id);
     if(c.pin)continue;
+    if(t.frame&&!c.back){
+      if(t.frame==='prep'){const y=state.tasks.find(x=>x.frame==='yoyu');if(y&&C[y.id]&&C[y.id].pe+1===c.ps){out.edges.push({from:y.id,fromSide:'end',to:id,toSide:'start',offset:1});stack.push([y.id,'end'])}}
+      else if(t.frame==='clean'){for(const x of state.tasks){if(x.frame==='clean'||(kids[x.id]||[]).length)continue;const X=C[x.id];if(X&&X.pe+1===c.ps){out.edges.push({from:x.id,fromSide:'end',to:id,toSide:'start',offset:1});stack.push([x.id,'end'])}}}
+      continue}
     if(c.back){for(const r of c.back){const H=C[r.h];if(!H)continue;const hd=r.key==='endRule'?H.pe:H.ps,v=snapB(addW(hd,-r.off,c.cal),c.cal);
         if(r.base==='end'?v===c.pe:v===c.ps){const hs=r.key==='endRule'?'end':'start';out.edges.push({from:r.h,fromSide:hs,to:id,toSide:r.base,offset:-r.off,rev:true});stack.push([r.h,hs])}}
       continue}
@@ -557,6 +583,7 @@ function setRule(t,key,date,cal){const r=t[key];if(r&&r.type==='rel'){const cur=
 function applyPlan(t,ns,ne){
   const cal=calOf(t);if(ne<ns)ne=ns;const d=span(ns,ne,cal);
   const c0=C[t.id];
+  if(t.frame&&!(c0&&(c0.pin||c0.back))){state.settings.koji[t.frame]=d;return}
   if(c0&&(c0.pin||c0.back)){
     if(c0.pin)t.pin=iso(ns);
     else for(const r of c0.back){const e=(byId[r.h][r.key].refs||[]).find(x=>x.ref===t.id);if(e){const dk=r.base==='end'?diffW(c0.pe,ne,cal):diffW(c0.ps,ns,cal);e.offset=(+e.offset||0)-dk}}
@@ -569,6 +596,7 @@ function applyPlan(t,ns,ne){
 }
 function shiftTask(t,delta,sub){
   const cal=calOf(t),c=C[t.id];
+  if(t.frame&&!c.pin&&!c.back)return;
   if(c.pin){t.pin=iso(delta>=0?snapF(c.ps+delta,cal):snapB(c.ps+delta,cal));return}
   if(c.back){if(sub&&c.back.every(r=>sub.has(r.h)))return;for(const r of c.back){const e=(byId[r.h][r.key].refs||[]).find(x=>x.ref===t.id);if(e){const cur=r.base==='end'?c.pe:c.ps,nd=delta>=0?snapF(cur+delta,cal):snapB(cur+delta,cal);e.offset=(+e.offset||0)-diffW(cur,nd,cal)}}return}
   const keys=t.anchor==='end'?['endRule']:t.anchor==='both'?['startRule','endRule']:['startRule'];
@@ -700,10 +728,10 @@ function cellsHTML(t,wbs,depth,si){
 <div class="c"><input data-k="spec" value="${esc(t.spec)}"${RD}></div>
 <div class="c"><input type="number" min="0" step="any" data-k="qty" value="${esc(t.qty)}"${RD}></div>
 <div class="c"><input data-k="unit" value="${esc(t.unit)}"${RD}></div>
-${P?ro(''):t.durSrc==='buk'?`<div class="c auto" title="${esc('歩掛ごとの日当り施工量から計算（詳細設定の「歩掛」で変更）\n'+durText(t,c))}"><input type="number" value="${c.work>0&&+t.qty>0?f2(+t.qty/c.work):''}" readonly></div>`:`<div class="c${t.durSrc==='yield'?'':' auto'}"><input type="number" min="0" step="any" data-k="daily" value="${esc(t.daily)}"${RD} title="日当り施工量（数量÷日当り施工量で施工日数を計算）"></div>`}
-${P?ro(''):`<div class="c"><input type="number" min="1" data-k="parties" value="${esc(t.parties)}"${RD}></div>`}
-${P?ro(''):`<div class="c${t.durSrc==='work'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="0" step="any" data-k="work" value="${c.work!=null?f2(c.work):''}"${RD}${c.src==='yield'||c.src==='buk'?' readonly':''}></div>`}
-${P?ro(c.dur,'num'):`<div class="c${t.durSrc==='fixed'||t.anchor==='both'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="1" data-k="dur" value="${c.dur}"${RD}></div>`}
+${P||t.frame?ro(''):t.durSrc==='buk'?`<div class="c auto" title="${esc('歩掛ごとの日当り施工量から計算（詳細設定の「歩掛」で変更）\n'+durText(t,c))}"><input type="number" value="${c.work>0&&+t.qty>0?f2(+t.qty/c.work):''}" readonly></div>`:`<div class="c${t.durSrc==='yield'?'':' auto'}"><input type="number" min="0" step="any" data-k="daily" value="${esc(t.daily)}"${RD} title="日当り施工量（数量÷日当り施工量で施工日数を計算）"></div>`}
+${P||t.frame?ro(''):`<div class="c"><input type="number" min="1" data-k="parties" value="${esc(t.parties)}"${RD}></div>`}
+${P||t.frame?ro(''):`<div class="c${t.durSrc==='work'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="0" step="any" data-k="work" value="${c.work!=null?f2(c.work):''}"${RD}${c.src==='yield'||c.src==='buk'?' readonly':''}></div>`}
+${P?ro(c.dur,'num'):`<div class="c${t.frame||t.durSrc==='fixed'||t.anchor==='both'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="1" data-k="dur" value="${c.dur}"${RD}></div>`}
 ${P?ro(fmt(c.ps)):`<div class="c${c.pin?' pin':c.back?' rev':sRel?' rel':''}" title="${esc(sTip)}">${di('ps',c.ps)}</div>`}
 ${P?ro(fmt(c.pe)):`<div class="c${c.back?' rev':eRel?' rel':''}${c.over?' over':''}" title="${esc(eTip+(c.dl!=null?'\n'+ruleText(t,'deadline')+(c.over?`\n→ ${c.over}日超過`:'\n→ 期限内'):''))}">${di('pe',c.pe)}</div>`}
 ${P?ro(fmt(c.as)):`<div class="c">${di('as',parse(t.as))}</div>`}
@@ -965,7 +993,7 @@ function editCell(id,k,v){
     case'pe':{const n=parse(v);if(n==null)break;let ne=snapB(n,c.cal);if(ne<c.ps)ne=c.ps;applyPlan(t,c.ps,ne);break}
     case'as':t.as=v;if(!v)t.ae='';break;
     case'ae':t.ae=v;if(v&&!t.as)t.as=v;if(v&&(+t.prog||0)<100)t.prog=100;break;
-    case'dur':{const d=Math.max(1,Math.round(+v||1));if(t.anchor==='both')applyPlan(t,c.ps,addW(c.ps,d-1,c.cal));else{t.dur=d;t.durSrc='fixed'}break}
+    case'dur':{const d=Math.max(1,Math.round(+v||1));if(t.frame){state.settings.koji[t.frame]=d;break}if(t.anchor==='both')applyPlan(t,c.ps,addW(c.ps,d-1,c.cal));else{t.dur=d;t.durSrc='fixed'}break}
     case'work':{const w=+v;if(w>0){t.work=Math.round(w*100)/100;t.durSrc='work'}break}
     case'qty':case'daily':{t[k]=v===''?'':+v;if(+t.qty>0&&+t.daily>0&&!(kids[id]||[]).length)t.durSrc='yield';break}
     case'parties':t.parties=Math.max(1,Math.round(+v||1));break
@@ -1319,6 +1347,7 @@ function openDetail(id){
 <div class="g2"><label>名称（工種・種別・細別）<input id="d-name" value="${esc(t.name)}"></label><label>担当者<input id="d-who" list="dl-who" value="${esc(t.who)}"></label><label>工程区分<input id="d-proc" list="dl-proc" value="${esc(t.proc)}"></label><label>備考<input id="d-note" value="${esc(t.note)}"></label></div>
 <div class="g2" style="margin-top:8px"><label>規格<input id="d-spec" value="${esc(t.spec)}"></label><label>数量<input id="d-qty" type="number" step="any" min="0" value="${esc(t.qty)}"></label><label>単位<input id="d-unit" value="${esc(t.unit)}"></label></div>
 ${P?`<p class="hint">親タスクの日付・日数・進捗度は子タスクから自動で集計されます（予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}、${c.dur}日、${Math.round(c.prog)}%）。</p>`:`
+${t.frame?`<p class="hint" style="color:#b45309">${esc(FRAME[t.frame])}は日数だけの工程です。日数は工事情報の「${esc(FRAME[t.frame])}（日）」で決まり、雨休率・作業不能期間は使いません（左の表の暦日数を書き換えても変わります）。開始日は${t.frame==='yoyu'?'工期（自）':t.frame==='prep'?'余裕期間の翌日':'ほかの工程がすべて終わった翌日'}です。</p>`:''}
 <h3>アンカー</h3>
 <div class="rr"><label><input type="checkbox" id="d-pin"${t.pin?' checked':''}> この工程をアンカー（日程の基準）にする　開始日</label><input class="fld" type="date" id="d-pin-d" value="${iso(parse(t.pin)??c.ps)}"${t.pin?'':' disabled'}></div>
 <p class="hint">アンカーにした工程は、この開始日から動きません。関連付けでつながった工程は、アンカーより前の工程は逆算、後の工程は順算で、アンカーに合わせて決まります。下の「開始日の決め方」などは、アンカーを外したときに使います。</p>
@@ -1589,7 +1618,7 @@ async function openImport(){
     const on=new Set([...document.querySelectorAll('#im-roots [data-root]')].filter(x=>x.checked).map(x=>x.dataset.root));
     const add=plan.tasks.filter(t=>on.has(t.__root));for(const t of plan.tasks)delete t.__root;
     if(!add.length){$('#im-msg').textContent='取り込む範囲を1つ以上選んでください';return}
-    mutate(()=>{if(md==='replace'){state.tasks=add;state.links=[]}else state.tasks.push(...add);if(setT&&plan.title)state.title=plan.title;sel=null});
+    mutate(()=>{if(md==='replace'){state.tasks=add;state.links=[]}else state.tasks.push(...add);if(setT&&plan.title)state.title=plan.title;ensureFrame();sel=null});
     R=null;closeModal();renderAll();requestAnimationFrame(goStart);toast(`${add.length}行を取り込みました（Ctrl+S で保存）`);
   };
 }
@@ -1629,7 +1658,8 @@ function openKoji(){
 <div class="g2" style="margin-top:8px">${f('from','工期（自）',K.from,'date')}${f('to','工期（至）',K.to,'date')}<label>工期日数<input id="k-days" value="${k1!=null&&k2!=null?(k2-k1+1)+'日':''}" disabled></label>${f('rate','雨休率（既定）',K.rainRate,'number',' step="any" min="0"')}</div>
 <div class="g2" style="margin-top:8px">${f('jigyo','事業区分',K.jigyo)}${f('kubun','工事区分',K.kubun)}${f('kyokuCode','整備局コード',K.kyokuCode)}${f('kyokuName','整備局',K.kyokuName)}</div>
 <h3>対象工事区分</h3>
-<div class="g2">${f('taishoName','名称',K.taishoName)}${f('A','係数 A',K.A,'number',' step="any"')}${f('b','係数 b',K.b,'number',' step="any"')}${f('prep','準備期間（日）',K.prep,'number')}${f('clean','後片付け期間（日）',K.clean,'number')}</div>
+<div class="g2">${f('taishoName','名称',K.taishoName)}${f('A','係数 A',K.A,'number',' step="any"')}${f('b','係数 b',K.b,'number',' step="any"')}${f('yoyu','余裕期間（日）',K.yoyu,'number')}${f('prep','準備期間（日）',K.prep,'number')}${f('clean','後片付け期間（日）',K.clean,'number')}</div>
+${ad?`<div class="rr"><label><input type="checkbox" id="k-frame"${state.tasks.filter(t=>t.frame).length<3?' checked':''}> 余裕期間・準備期間・後片付け期間の工程を工事区分のレベルに置く（先頭に余裕期間・準備期間、最後に後片付け期間。日数は上の値、雨休率・作業不能期間は使いません）</label></div>`:''}
 <h3>日当りマスタ</h3>
 <div class="g2"><label>使う年度<select id="k-master"${dis}><option value="">最新の年度（自動）</option></select></label></div>
 <p class="hint">雨休率は、施工日数に対して見込む雨天・休日の割合です（例：0.9 → 施工日数10日に対し雨休9日）。タスクごとに変える場合は、そのタスクの詳細設定で入力します。対象工事区分の項目は、XMLへの出力用に保持します。</p>
@@ -1642,7 +1672,7 @@ ${ad?'':'<p class="hint">工事情報の変更は管理者だけができます�
   g('c').onclick=closeModal;
   if(ad)g('ok').onclick=()=>{const a=parse(g('from').value),b=parse(g('to').value);if(a!=null&&b!=null&&b<a){g('msg').textContent='工期（至）が工期（自）より前になっています';return}
     const num=id=>g(id).value===''?'':+g(id).value;
-    mutate(()=>{state.title=g('title').value.trim();Object.assign(K,{place:g('place').value.trim(),from:g('from').value,to:g('to').value,rainRate:g('rate').value===''?0:+g('rate').value,jigyo:g('jigyo').value.trim(),kubun:g('kubun').value.trim(),kyokuCode:g('kyokuCode').value.trim(),kyokuName:g('kyokuName').value.trim(),taishoName:g('taishoName').value.trim(),A:num('A'),b:num('b'),prep:num('prep'),clean:num('clean'),masterKey:g('master').value})});
+    mutate(()=>{state.title=g('title').value.trim();Object.assign(K,{place:g('place').value.trim(),from:g('from').value,to:g('to').value,rainRate:g('rate').value===''?0:+g('rate').value,jigyo:g('jigyo').value.trim(),kubun:g('kubun').value.trim(),kyokuCode:g('kyokuCode').value.trim(),kyokuName:g('kyokuName').value.trim(),taishoName:g('taishoName').value.trim(),A:num('A'),b:num('b'),prep:num('prep'),clean:num('clean'),yoyu:num('yoyu'),masterKey:g('master').value});if(g('frame')&&g('frame').checked)ensureFrame()});
     R=null;closeModal();renderAll();toast('工事情報を反映しました')};
 }
 function openIO(){
@@ -1949,7 +1979,7 @@ ${isAdmin()?`<h3>共有フォルダの移転（管理者）</h3><p class="hint">
   if(!FS.moved)$('#p-logout').onclick=()=>{ME=null;RO=true;screenLogin()};
   if(isAdmin())$('#n-ok').onclick=async()=>{const name=$('#n-name').value.trim();if(!name){$('#n-msg').textContent='工事名を入力してください';return}
     const file=name.replace(/[\\/:*?"<>|]/g,'_')+EXT;if(list.some(p=>p.file===file)){$('#n-msg').textContent='同じ名前の工事ファイルがあります';return}
-    const d=canon({title:name,settings:Object.assign({},sample().settings,{koji:Object.assign({},KOJI0,{from:iso(todayN)}),periods:[]}),tasks:[newTask(todayN)],links:[]});d.version=1;d.savedAt=Date.now();d.savedBy=ME.name;d.history=[{at:d.savedAt,by:ME.name,sum:'新規作成'}];
+    const d=canon({title:name,settings:Object.assign({},sample().settings,{koji:Object.assign({},KOJI0,{from:iso(todayN)}),periods:[]}),tasks:[frameTask('yoyu'),frameTask('prep'),newTask(todayN),frameTask('clean')],links:[]});d.version=1;d.savedAt=Date.now();d.savedBy=ME.name;d.history=[{at:d.savedAt,by:ME.name,sum:'新規作成'}];
     await writeText(file,JSON.stringify(d,null,1));openProject(file)};
 }
 /* ---- 工事の複写（管理者） ---- */
