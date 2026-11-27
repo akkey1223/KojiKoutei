@@ -58,6 +58,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .c input:hover{border-color:var(--line)}
 .c input:focus{border-color:var(--acc);background:var(--field);outline:none}
 .c input[type=number]{text-align:right}
+.c input.pc{text-align:center;padding:0 1px}
 .c input[type=date]{padding:0 2px;font-variant-numeric:tabular-nums}
 .c.ro{color:var(--mut);padding-left:7px;font-variant-numeric:tabular-nums}
 .c.num{justify-content:flex-end;padding-right:8px}
@@ -357,7 +358,7 @@ function span(a,b,cal){if(b<a)return 1;if(!cal)return b-a+1;let k=0;for(let n=a;
 const endFrom=(s,d,cal)=>addW(snapF(s,cal),Math.max(1,d)-1,cal);
 const startFrom=(e,d,cal)=>addW(snapB(e,cal),-(Math.max(1,d)-1),cal);
 
-function T(id,name,parent,o={}){return Object.assign({id,name,parent,startRule:{type:'fixed',date:''},endRule:{type:'fixed',date:''},anchor:'start',deadline:null,dur:5,as:'',ae:'',prog:0,who:'',proc:'',note:'',cPlan:'',cAct:'',collapsed:false,
+function T(id,name,parent,o={}){return Object.assign({id,name,parent,startRule:{type:'fixed',date:''},endRule:{type:'fixed',date:''},anchor:'start',deadline:null,dur:5,as:'',ae:'',prog:0,who:'',proc:1,note:'',cPlan:'',cAct:'',collapsed:false,
   spec:'',qty:'',unit:'',daily:'',parties:1,durSrc:'work',work:5,rainRate:'',restricted:true,buk:[],site:'',xmlNo:null},o)}
 const ent=(ref,off=1,base='end')=>({ref,base,offset:off});
 const rel=(refs,mode='max')=>({type:'rel',mode,refs:Array.isArray(refs)?refs:[refs]});
@@ -368,6 +369,8 @@ const KOJI0={masterKey:'',place:'',from:'',to:'',rainRate:0.9,jigyo:'',kubun:'',
    余裕期間は工期（自）から、準備工は余裕期間の翌日から、跡片付けはほかの工程がすべて終わった翌日から */
 const FRAME={yoyu:'余裕期間',prep:'準備工',clean:'跡片付け'};
 const FRAME_OLD={prep:'準備期間',clean:'後片付け期間'};
+/* 工程区分は番号（1以上の整数、既定は1）。以前の「02 伐木除根」のような文字は先頭の数字を使う */
+const procNum=v=>{if(typeof v==='number'&&isFinite(v))return Math.max(1,Math.round(v));const m=String(v??'').match(/\d+/);return m?Math.max(1,+m[0]):1};
 const frameTask=(f,id)=>T(id||uid(),FRAME[f],null,{frame:f,durSrc:'fixed',rainRate:0,restricted:false,qty:'',unit:'',work:'',dur:1});
 function ensureFrame(){
   const got={};for(const f in FRAME){got[f]=state.tasks.find(t=>t.frame===f);if(!got[f]){got[f]=frameTask(f);state.tasks.push(got[f])}Object.assign(got[f],{parent:null,restricted:false,rainRate:0})}
@@ -386,15 +389,15 @@ function sample(){
       frameTask('prep','fprep'),
       T('p2','河川土工',null,{qty:1,unit:'式'}),
       T('p21','伐木除根工','p2',{qty:1,unit:'式'}),
-      T('t211','伐木・伐竹','p21',Y(17900,439,{spec:'伐竹',unit:'m2',parties:3,startRule:rel(ent('fprep')),proc:'02 伐木除根',buk:[{code:'CB320510',eda:'0004',name:'伐木・伐竹（伐木除根）',unit:'1ｍ２',daily:439,cond:'樹木・竹の区分　樹木密集度及び施工区分=伐竹',J:[['J01','5']]}]})),
-      T('t212','除根整地','p21',Y(21500,534.286,{unit:'m2',parties:3,startRule:rel(ent('t211')),proc:'02 伐木除根'})),
+      T('t211','伐木・伐竹','p21',Y(17900,439,{spec:'伐竹',unit:'m2',parties:3,startRule:rel(ent('fprep')),buk:[{code:'CB320510',eda:'0004',name:'伐木・伐竹（伐木除根）',unit:'1ｍ２',daily:439,cond:'樹木・竹の区分　樹木密集度及び施工区分=伐竹',J:[['J01','5']]}]})),
+      T('t212','除根整地','p21',Y(21500,534.286,{unit:'m2',parties:3,startRule:rel(ent('t211'))})),
       T('p22','掘削工(ICT)','p2',{qty:1,unit:'式'}),
-      T('t221','掘削(ICT)','p22',Y(8500,350,{spec:'土砂 ｵｰﾌﾟﾝｶｯﾄ 障害無し',unit:'m3',startRule:rel([ent('t212'),ent('t31')]),proc:'03 掘削',buk:[{code:'CB210120',eda:'0003',name:'掘削（ＩＣＴ）',unit:'1ｍ３',daily:350,cond:'土質=土砂; 施工方法=オープンカット; 障害の有無=無し; 施工数量=10,000m3以上50,000m3未満',J:[['J01','1'],['J02','1'],['J03','1'],['J04','3']]}]})),
-      T('t222','土砂等運搬','p22',Y(1410,273,{spec:'土砂（岩塊・玉石混り土含む）',unit:'m3',startRule:rel(ent('t221',0,'start')),proc:'03 掘削',note:'掘削と同時に開始'})),
+      T('t221','掘削(ICT)','p22',Y(8500,350,{spec:'土砂 ｵｰﾌﾟﾝｶｯﾄ 障害無し',unit:'m3',startRule:rel([ent('t212'),ent('t31')]),buk:[{code:'CB210120',eda:'0003',name:'掘削（ＩＣＴ）',unit:'1ｍ３',daily:350,cond:'土質=土砂; 施工方法=オープンカット; 障害の有無=無し; 施工数量=10,000m3以上50,000m3未満',J:[['J01','1'],['J02','1'],['J03','1'],['J04','3']]}]})),
+      T('t222','土砂等運搬','p22',Y(1410,273,{spec:'土砂（岩塊・玉石混り土含む）',unit:'m3',startRule:rel(ent('t221',0,'start')),note:'掘削と同時に開始'})),
       T('p23','法面整形工(ICT)','p2',{qty:1,unit:'式'}),
-      T('t231','法面整形(切土部)(ICT)','p23',Y(880,154,{spec:'ﾚｷ質土､砂及び砂質土､粘性土',unit:'m2',startRule:rel(ent('t221')),proc:'04 法面整形',note:'途中で出水期に入るため、出水期明けに再開'})),
+      T('t231','法面整形(切土部)(ICT)','p23',Y(880,154,{spec:'ﾚｷ質土､砂及び砂質土､粘性土',unit:'m2',startRule:rel(ent('t221')),note:'途中で出水期に入るため、出水期明けに再開'})),
       T('p3','仮設工',null,{qty:1,unit:'式'}),
-      T('t31','敷鉄板','p3',{spec:'22×1,524×6,096（mm） 設置',qty:3020,unit:'m2',work:9,startRule:rel(ent('fprep')),proc:'05 仮設'}),
+      T('t31','敷鉄板','p3',{spec:'22×1,524×6,096（mm） 設置',qty:3020,unit:'m2',work:9,startRule:rel(ent('fprep'))}),
       frameTask('clean','fclean')
     ],
     links:[
@@ -407,8 +410,10 @@ function fill(o){
   return{title:o.title??'',sample:!!o.sample,savedAt:o.savedAt||0,
     settings:Object.assign({},d.settings,o.settings||{},{colors:Object.assign({},d.settings.colors,(o.settings||{}).colors||{}),koji:Object.assign({},KOJI0,(o.settings||{}).koji||{}),periods:(o.settings&&o.settings.periods)||[]}),
     view:Object.assign({},d.view,o.view||{}),
-    tasks:(o.tasks||[]).map(t=>{const x=Object.assign(T(t.id||uid(),'',null),t);if(t.durSrc==null)x.durSrc='fixed';if(x.frame&&FRAME_OLD[x.frame]===x.name)x.name=FRAME[x.frame];x.startRule=migrateRule(x.startRule);x.endRule=migrateRule(x.endRule);return x}),links:o.links||[]};
+    tasks:fixProc((o.tasks||[]).map(t=>{const x=Object.assign(T(t.id||uid(),'',null),t);if(t.durSrc==null)x.durSrc='fixed';x.proc=t.proc??'';if(x.frame&&FRAME_OLD[x.frame]===x.name)x.name=FRAME[x.frame];x.startRule=migrateRule(x.startRule);x.endRule=migrateRule(x.endRule);return x})),links:o.links||[]};
 }
+/* 工程区分を番号にそろえる。以前は親の区分を子が引き継いでいたので、空の子は親の番号にする */
+function fixProc(ts){const by={};for(const t of ts)by[t.id]=t;const memo={},get=(t,g=0)=>{if(memo[t.id]!=null)return memo[t.id];const v=t.proc;let n;if(typeof v==='number'||String(v??'').trim())n=procNum(v);else n=t.parent&&by[t.parent]&&g<99?get(by[t.parent],g+1):1;return memo[t.id]=n};for(const t of ts)t.proc=get(t);for(const t of ts)t.proc=memo[t.id];return ts}
 const dataObj=()=>({title:state.title,sample:state.sample,savedAt:state.savedAt,settings:state.settings,view:state.view,tasks:state.tasks,links:state.links});
 
 /* ---------- 計算 ---------- */
@@ -654,13 +659,19 @@ function buildRows(){
 /* 工程区分順：工程区分ごとに見出し（区分の中のタスクをまとめたバー）を置き、区分の中は設計書（入力）の並び。
    区分は、そのタスクか、いちばん近い親に入っている工程区分。見出しは表示だけの行（id は "grp:区分名"） */
 const GCOL=new Set();
-const grpOf=t=>{let x=t,g=0;while(x&&g++<99){if((x.proc||'').trim())return x.proc.trim();x=x.parent?byId[x.parent]:null}return''};
+const grpOf=t=>procNum(t.proc);
+/* コピー（工程区分を分けたもの）は元の行をたどって、設計書（入力）での位置を返す */
+function originOf(t){let x=t,g=0;while(x.src&&byId[x.src]&&g++<99)x=byId[x.src];return x}
 function groupRows(out){
-  const leaves=FULL.filter(t=>!(kids[t.id]||[]).length),M=new Map();
+  const pos=new Map(FULL.map((t,i)=>[t.id,i])),op=t=>pos.get(originOf(t).id)??pos.get(t.id);
+  const leaves=FULL.filter(t=>!(kids[t.id]||[]).length&&!t.frame),M=new Map();
   for(const t of leaves){const k=grpOf(t);if(!M.has(k))M.set(k,[]);M.get(k).push(t)}
-  const keys=[...M.keys()].sort((a,b)=>!a?1:!b?-1:a.localeCompare(b,'ja',{numeric:true}));
+  for(const ts of M.values())ts.sort((a,b)=>op(a)-op(b)||pos.get(a.id)-pos.get(b.id));
+  const keys=[...M.keys()].sort((a,b)=>a-b);
+  const fr=f=>FULL.filter(t=>t.frame===f).forEach(t=>out.push({t,depth:0,wbs:WBS[t.id]}));
+  fr('yoyu');fr('prep');
   for(const k of keys){
-    const ts=M.get(k),id='grp:'+k,G={id,name:k||'（工程区分なし）',parent:null,collapsed:GCOL.has(id),grp:true,proc:k},cs=ts.map(t=>C[t.id]).filter(Boolean);
+    const ts=M.get(k),id='grp:'+k,G={id,name:'工程区分 '+k,parent:null,collapsed:GCOL.has(id),grp:true,proc:k},cs=ts.map(t=>C[t.id]).filter(Boolean);
     let ps=Infinity,pe=-Infinity,as=Infinity,ae=-Infinity,ws=0,pgs=0,anyA=false,allDone=true;
     for(const x of cs){ps=Math.min(ps,x.ps);pe=Math.max(pe,x.pe);ws+=x.dur;pgs+=x.dur*x.prog;if(x.as!=null){anyA=true;as=Math.min(as,x.as);ae=Math.max(ae,x.aeDraw)}if(x.ae==null)allDone=false}
     C[id]={parent:true,grp:true,segs:mergeSegs(cs.flatMap(x=>x.segs),false),asegs:mergeSegs(cs.flatMap(x=>x.asegs),false),ps,pe,dur:span(ps,pe,false),prog:ws?pgs/ws:0,as:anyA?as:null,ae:anyA&&allDone?ae:null,aeDraw:anyA?ae:null,cal:false,err:''};
@@ -668,6 +679,7 @@ function groupRows(out){
     out.push({t:G,depth:0,wbs:'',grp:true,n:ts.length});
     if(!G.collapsed)for(const t of ts)out.push({t,depth:1,wbs:WBS[t.id]});
   }
+  fr('clean');
 }
 function rowAt(y){let lo=0,hi=ROWS.length-1;if(hi<0)return-1;while(lo<hi){const m=(lo+hi+1)>>1;if(ROWS[m].top<=y)lo=m;else hi=m-1}return lo}
 function ruleText(t,key){
@@ -682,7 +694,7 @@ function ruleText(t,key){
 }
 
 /* ---------- 描画：表 ---------- */
-const COLS=[{k:'grip',l:'',w:22},{k:'wbs',l:'No.',w:48},{k:'name',l:'工種・種別・細別',w:220},{k:'proc',l:'工程区分',w:110},{k:'spec',l:'規格',w:130},{k:'qty',l:'数量',w:76},{k:'unit',l:'単位',w:48},{k:'daily',l:'日当り<small>施工量</small>',w:76},{k:'parties',l:'班数',w:44},{k:'work',l:'施工<small>日数</small>',w:66},{k:'dur',l:'暦日数',w:62},{k:'ps',l:'開始予定日',w:124},{k:'pe',l:'完了予定日',w:124},{k:'as',l:'開始日<small>実績</small>',w:124},{k:'ae',l:'完了日<small>実績</small>',w:124},{k:'prog',l:'進捗度',w:64},{k:'who',l:'担当者',w:90},{k:'note',l:'備考',w:170}];
+const COLS=[{k:'grip',l:'',w:22},{k:'wbs',l:'No.',w:48},{k:'name',l:'工種・種別・細別',w:220},{k:'proc',l:'工程<small>区分</small>',w:40},{k:'spec',l:'規格',w:130},{k:'qty',l:'数量',w:76},{k:'unit',l:'単位',w:48},{k:'daily',l:'日当り<small>施工量</small>',w:76},{k:'parties',l:'班数',w:44},{k:'work',l:'施工<small>日数</small>',w:66},{k:'dur',l:'暦日数',w:62},{k:'ps',l:'開始予定日',w:124},{k:'pe',l:'完了予定日',w:124},{k:'as',l:'開始日<small>実績</small>',w:124},{k:'ae',l:'完了日<small>実績</small>',w:124},{k:'prog',l:'進捗度',w:64},{k:'who',l:'担当者',w:90},{k:'note',l:'備考',w:170}];
 const lhead=$('#lhead'),lbody=$('#lbody'),lin=$('#lin'),rhead=$('#rhead'),rbody=$('#rbody'),hsvg=$('#hsvg'),csvg=$('#csvg');
 /* 左の表の表示：予定＝予定に関する項目、実施＝実施に関する項目、予定・実施＝すべて */
 const HIDE={both:['wbs'],plan:['wbs','as','ae','prog'],act:['wbs','spec','qty','unit','daily','parties','work','dur','ps','pe']};
@@ -695,9 +707,8 @@ function renderLeft(){
   lhead.innerHTML=COLV.map(c=>`<div class="h">${c.l}</div>`).join('');
   lin.style.height=(TOTH+80)+'px';
   lin.innerHTML=ROWS.map(rowHTML).join('');
-  const who=new Set(activeUsers().map(u=>u.name)),proc=new Set();for(const t of state.tasks){if(t.who)who.add(t.who);if(t.proc)proc.add(t.proc)}
+  const who=new Set(activeUsers().map(u=>u.name));for(const t of state.tasks){if(t.who)who.add(t.who)}
   $('#dl-who').innerHTML=[...who].map(v=>`<option value="${esc(v)}">`).join('');
-  $('#dl-proc').innerHTML=[...proc].sort().map(v=>`<option value="${esc(v)}">`).join('');
 }
 function rowHTML(r){
   if(r.subs)return mrowHTML(r);
@@ -725,7 +736,7 @@ function cellsHTML(t,wbs,depth,si){
   const html=`${si?'<div class="c"></div>':'<div class="c grip" title="ドラッグで上下に移動（行の中央に落とすと子タスクになります）">⠿</div>'}
 <div class="c wbs" title="ダブルクリックで詳細設定">${wbs}</div>
 <div class="c name" style="padding-left:${3+depth*16}px">${si?`<span class="sbd" style="background:${si.col}" title="チャートで同じ色の番号のバー">${si.j+1}</span>`:P?`<button class="tg" data-tg title="折りたたみ">${t.collapsed?'▸':'▾'}</button>`:'<span class="tg0"></span>'}${t.pin&&!P?'<span class="anc" title="アンカー（日程の基準）">⚓</span>':''}<input data-k="name" value="${esc(t.name)}" placeholder="名称"${RD}>${c.err?`<span class="warn" title="${esc(c.err)}">!</span>`:''}${c.over?`<span class="warn ov" title="${esc(`期限 ${fmt(c.dl)} を ${c.over}日超過しています\n${ruleText(t,'deadline')}`)}">期</span>`:''}</div>
-<div class="c"><input data-k="proc" list="dl-proc" value="${esc(t.proc)}"${RD} title="工程区分（並び「工程区分順」でこの区分ごとにまとめます）"></div>
+<div class="c">${t.frame?'':`<input type="number" class="pc" min="1" step="1" data-k="proc" value="${procNum(t.proc)}"${RD} title="工程区分の番号（並び「工程区分順」でこの番号ごとにまとめます）。親の番号を変えると、同じ番号だった子も変わります。\n行を右クリックすると、別の工程区分に分けられます">`}</div>
 <div class="c"><input data-k="spec" value="${esc(t.spec)}"${RD}></div>
 <div class="c"><input type="number" min="0" step="any" data-k="qty" value="${esc(t.qty)}"${RD}></div>
 <div class="c"><input data-k="unit" value="${esc(t.unit)}"${RD}></div>
@@ -1003,7 +1014,63 @@ function editCell(id,k,v){
     case'qty':case'daily':{t[k]=v===''?'':+v;if(+t.qty>0&&+t.daily>0&&!(kids[id]||[]).length)t.durSrc='yield';break}
     case'parties':t.parties=Math.max(1,Math.round(+v||1));break
     case'prog':t.prog=clamp(Math.round(+v||0),0,100);break;
+    case'proc':setProc(t,v);break;
     default:t[k]=v}},true);
+}
+/* 工程区分の番号を変える：子孫のうち同じ番号だったものも合わせて変える */
+function setProc(t,v){const n=procNum(v),o=procNum(t.proc);for(const id of subtreeIds(t.id)){const x=byId[id];if(x&&!x.frame&&(x.id===t.id||procNum(x.proc)===o))x.proc=n}}
+/* 工程区分を分ける：押した行の直系の上位（工事区分〜）と、その行より下をすべてコピーし、跡片付けの前に置く。
+   同じ工程区分にすでにコピーした上位があれば、それを使う（上位が重ならない）。コピーは元の行を src に持ち、
+   工程区分順では元の設計書の並びで並ぶ。日程は元の工程の翌日から始まる日付指定にし、関連付け・実績は引き継がない */
+function splitPlan(id,n){
+  const t=byId[id],chain=[];for(let x=t.parent?byId[t.parent]:null,g=0;x&&g++<99;x=x.parent?byId[x.parent]:null)chain.unshift(x);
+  const sub=[...subtreeIds(id)].map(i=>byId[i]).sort((a,b)=>IDX.get(a.id)-IDX.get(b.id));
+  let par=null;const reuse=[];
+  for(const a of chain){const ex=state.tasks.find(x=>x.src===a.id&&procNum(x.proc)===n&&(x.parent||null)===par);if(!ex)break;reuse.push(ex);par=ex.id}
+  const dup=reuse.length===chain.length&&state.tasks.some(x=>x.src===t.id&&procNum(x.proc)===n&&(x.parent||null)===par);
+  return{t,chain,sub,reuse,dup};
+}
+function cloneFor(o,n,parent){
+  const x=JSON.parse(JSON.stringify(o));
+  Object.assign(x,{id:uid(),src:o.id,proc:n,parent,as:'',ae:'',prog:0,pin:false,collapsed:false,deadline:null});
+  delete x.frame;
+  if(!(kids[o.id]||[]).length){const c=C[o.id],d=c?iso(addW(c.pe,1,c.cal)):(x.startRule&&x.startRule.date)||'';x.startRule={type:'fixed',date:d};x.endRule={type:'fixed',date:d};x.anchor='start'}
+  return x;
+}
+function doSplit(id,n){
+  mutate(()=>{
+    const P=splitPlan(id,n),mp=new Map(),add=[];
+    let par=P.reuse.length?P.reuse[P.reuse.length-1].id:null;
+    for(const a of P.chain.slice(P.reuse.length)){const x=cloneFor(a,n,par);add.push(x);par=x.id}
+    for(const o of P.sub){const x=cloneFor(o,n,o.id===id?par:mp.get(o.parent));mp.set(o.id,x.id);add.push(x)}
+    /* 跡片付けの前に入れてから、コピーの親の中の並びを元の設計書の順にそろえる */
+    const ci=state.tasks.findIndex(x=>x.frame==='clean');state.tasks.splice(ci<0?state.tasks.length:ci,0,...add);
+    normalize();index();
+    const op=x=>IDX.get(originOf(x).id),ch={};for(const x of state.tasks)(ch[x.parent||'root']=ch[x.parent||'root']||[]).push(x);
+    for(const k in ch){const p=byId[k];if(p&&p.src)ch[k].sort((a,b)=>op(a)-op(b)||procNum(a.proc)-procNum(b.proc))}
+    {const r=ch.root||[],cp=r.filter(x=>x.src&&!x.frame).sort((a,b)=>procNum(a.proc)-procNum(b.proc)||op(a)-op(b)),cl=r.filter(x=>x.frame==='clean');ch.root=[...r.filter(x=>!x.src&&x.frame!=='clean'),...cp,...cl]}
+    const out=[],w=k=>{for(const x of ch[k]||[]){out.push(x);w(x.id)}};w('root');state.tasks=out;
+    sel=mp.get(id)});
+}
+function openSplit(id){
+  const t=byId[id];if(!t||t.frame)return;
+  if(!isAdmin())return deny('工程区分を分ける（行をコピーする）のは管理者だけができます');
+  const cur=procNum(t.proc),mx=Math.max(1,...state.tasks.filter(x=>!x.frame).map(x=>procNum(x.proc))),n0=openSplit.last&&openSplit.last!==cur&&!splitPlan(id,openSplit.last).dup?openSplit.last:mx+1;
+  const desc=n=>{const P=splitPlan(id,n);
+    if(P.dup)return`<p class="msg">工程区分 ${n} には、この行のコピーがすでにあります。別の番号にしてください。</p>`;
+    const up=P.chain.map((a,i)=>`${esc(a.name)}${i<P.reuse.length?'（コピー済みのものを使う）':''}`);
+    return`<p class="hint">コピーする行：${up.length?`直系の上位 ${up.join(' ＞ ')} と、`:''}「${esc(t.name)}」${P.sub.length>1?`より下の ${P.sub.length-1}行`:''}${(t.buk||[]).length||P.sub.some(x=>(x.buk||[]).length)?'（歩掛も含む）':''}。<br>コピーは跡片付けの前に入ります。数量・歩掛はそのままなので、分けた分の数量に直してください。日程は元の工程の翌日から始まる日付指定にし、関連付けと実績は引き継ぎません。</p>`};
+  openModal(`<h2>工程区分を分ける</h2>
+<p>「${esc(t.name)}」（工程区分 ${cur}）を、別の工程区分に分けますか？</p>
+<div class="rr"><label>分けた先の工程区分 <input id="sp-n" type="number" min="1" step="1" value="${n0}" style="width:70px"></label></div>
+<div id="sp-d">${desc(n0)}</div>
+<div class="mf"><span class="sp"></span><button class="btn" id="sp-c">分けない</button><button class="btn pri" id="sp-ok">分ける</button></div>`);
+  const inp=$('#sp-n'),ok=$('#sp-ok'),upd=()=>{const n=procNum(inp.value);$('#sp-d').innerHTML=desc(n);ok.disabled=splitPlan(id,n).dup};
+  inp.oninput=upd;upd();
+  $('#sp-c').onclick=closeModal;
+  ok.onclick=()=>{const n=procNum(inp.value);if(splitPlan(id,n).dup)return;closeModal();openSplit.last=n;doSplit(id,n);toast(`工程区分 ${n} に分けました（跡片付けの前に入れています）`)};
+  $('#mbox').onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing&&!ok.disabled){e.preventDefault();ok.click()}};
+  setTimeout(()=>{inp.focus();inp.select()},0);
 }
 function togglePin(){const t=sel&&byId[sel];if(!t){toast('アンカーにする工程を選んでください');return}if((kids[t.id]||[]).length){toast('アンカーにできるのは末端の工程（子タスクの無い行）だけです');return}if(!owns(t.id))return deny();
   const on=!t.pin;mutate(()=>{if(on)t.pin=iso(C[t.id].ps);else delete t.pin});toast(on?`「${t.name}」をアンカーにしました。関連付けでつながる工程はこの工程に合わせて決まります`:`「${t.name}」のアンカーを外しました`)}
@@ -1307,6 +1374,8 @@ lin.addEventListener('mouseleave',()=>hov(null));
 csvg.addEventListener('contextmenu',e=>{if(drag)return;const h=hit(pt(e),e.target);if(!h||!h.type)return;e.preventDefault();if(mode.last){mode.last=null}select(h.t.id);openDetail(h.t.id)});
 
 /* ---------- 表の操作 ---------- */
+/* 右クリック：工程区分を分けるかどうか聞く（Shift を押しながらならブラウザのメニュー） */
+lin.addEventListener('contextmenu',e=>{if(e.shiftKey)return;const row=e.target.closest('.row,.mhead');if(!row)return;const id=row.dataset.id;if(!id||id.startsWith('grp:')||!byId[id]||byId[id].frame)return;e.preventDefault();select(id);openSplit(id)});
 lin.addEventListener('change',e=>{const el=e.target,k=el.dataset.k,id=el.closest('.row')?.dataset.id;if(k&&id)editCell(id,k,el.value)});
 lin.addEventListener('focusin',e=>{const id=e.target.closest('.row')?.dataset.id;if(id&&id!==sel)select(id)});
 lin.addEventListener('click',e=>{const row=e.target.closest('.row,.mhead');if(!row)return;const id=row.dataset.id;
@@ -1360,7 +1429,7 @@ function openDetail(id){
   const lks=state.links.filter(l=>l.from===id||l.to===id);
   const S=state.settings;
   openModal(`<h2>${esc(WBS[id])} タスクの詳細</h2>
-<div class="g2"><label>名称（工種・種別・細別）<input id="d-name" value="${esc(t.name)}"></label><label>担当者<input id="d-who" list="dl-who" value="${esc(t.who)}"></label><label>工程区分<input id="d-proc" list="dl-proc" value="${esc(t.proc)}"></label><label>備考<input id="d-note" value="${esc(t.note)}"></label></div>
+<div class="g2"><label>名称（工種・種別・細別）<input id="d-name" value="${esc(t.name)}"></label><label>担当者<input id="d-who" list="dl-who" value="${esc(t.who)}"></label><label>工程区分（番号）<input id="d-proc" type="number" min="1" step="1" value="${procNum(t.proc)}"></label><label>備考<input id="d-note" value="${esc(t.note)}"></label></div>
 <div class="g2" style="margin-top:8px"><label>規格<input id="d-spec" value="${esc(t.spec)}"></label><label>数量<input id="d-qty" type="number" step="any" min="0" value="${esc(t.qty)}"></label><label>単位<input id="d-unit" value="${esc(t.unit)}"></label></div>
 ${P?`<p class="hint">親タスクの日付・日数・進捗度は子タスクから自動で集計されます（予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}、${c.dur}日、${Math.round(c.prog)}%）。</p>`:`
 ${t.frame?`<p class="hint" style="color:#b45309">${esc(FRAME[t.frame])}は日数だけの工程です。日数は工事情報の「${esc(FRAME[t.frame])}（日）」で決まり、雨休率・作業不能期間は使いません（左の表の暦日数を書き換えても変わります）。開始日は${t.frame==='yoyu'?'工期（自）':t.frame==='prep'?'余裕期間の翌日':'ほかの工程がすべて終わった翌日'}です。</p>`:''}
@@ -1441,7 +1510,7 @@ ${lks.length?`<ul class="lst">${lks.map(l=>`<li><span>${l.kind==='plan'?'予定'
         if(r.type==='rel'){const bad=r.refs.find(e=>e.ref===id||dependsOn(e.ref,id));if(bad){g('msg').textContent=`「${nm(bad.ref)}」はこのタスクの日程に依存しているため、基準にすると循環参照になります`;return}}}
       if(!sR)sR=t.startRule&&t.startRule.type?t.startRule:{type:'fixed',date:iso(c.ps)};
       if(!eR)eR=t.endRule&&t.endRule.type&&(t.endRule.date||t.endRule.refs)?t.endRule:{type:'fixed',date:iso(c.pe)};}
-    mutate(()=>{t.name=g('name').value;t.spec=g('spec').value;t.qty=g('qty').value===''?'':+g('qty').value;t.unit=g('unit').value;if(isAdmin())t.who=g('who').value;t.proc=g('proc').value;t.note=g('note').value;
+    mutate(()=>{t.name=g('name').value;t.spec=g('spec').value;t.qty=g('qty').value===''?'':+g('qty').value;t.unit=g('unit').value;if(isAdmin())t.who=g('who').value;setProc(t,g('proc').value);t.note=g('note').value;
       if(!P){t.anchor=anc;t.startRule=sR;if(pin)t.pin=pinD||iso(c.ps);else delete t.pin;t.endRule=eR;t.deadline=dR;t.durSrc=dsrc();t.buk=bk;t.daily=g('daily').value===''?'':+g('daily').value;if(+g('work').value>0)t.work=Math.round(+g('work').value*100)/100;t.parties=Math.max(1,Math.round(+g('pt').value||1));t.rainRate=g('rate').value===''?'':+g('rate').value;if(anc!=='both'&&t.durSrc==='fixed')t.dur=Math.max(1,Math.round(+g('dur').value||1));t.restricted=g('rst').checked;t.as=g('as').value;t.ae=t.as?g('ae').value:'';t.prog=clamp(Math.round(+g('prog').value||0),0,100)}
       t.cPlan=g('cpdef').checked?'':g('cp').value;t.cAct=g('cadef').checked?'':g('ca').value});
     closeModal();
