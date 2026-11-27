@@ -12,18 +12,19 @@ import os, re, sys, json, csv, argparse, datetime, unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import ext14, ext_codes, match
+import ext14, ext_codes, ext_buk, match
 
-APP_VER = '1.0'
+APP_VER = '1.1'
 
 RANK_TEXT = {
     'A': '名称が一致（コードと日当り表の項目名が同じ）',
     'B': '名称が類似・部分一致、または入力条件の文言が一致',
     'C': '同じ工種の中の候補（どのコードか人が選ぶ）',
+    '計算': '設置・撤去を1コードで扱う歩掛の合成値 1/(1/設置+1/撤去)',
 }
 
 def rank_of(how):
-    if how.startswith(('名称一致', '条件名一致')): return 'A'
+    if how.startswith(('名称一致', '条件名一致', '作業名一致')): return 'A'
     m = re.match(r'類似名称\((\d\.\d+)\)', how)
     if m: return 'A' if float(m.group(1)) >= 0.95 else 'B'
     if how.startswith(('入力条件一致', '名称部分一致', '工種名一致')): return 'B'
@@ -94,7 +95,7 @@ def build(pdfs, outdir=None, progress=print):
         base = dict(
             no=no, nendo=nendo, group=grp, kousyu=x['kousyu'], title=x['title'],
             cond=cond_text(x['cond']), valhead=x['valhead'], value=x['value'], unit=x['unit'],
-            src_label=x['page_label'], src_pdf=x['page_pdf'],
+            src_label=x['page_label'], src_pdf=x['page_pdf'], src_vol='共通編', seq=no,
             extract=x['mode'],
         )
         allrows.append(dict(base, codes='、'.join(f'{c["code"]}' for c, _ in res),
@@ -103,9 +104,31 @@ def build(pdfs, outdir=None, progress=print):
             rows.append(dict(base, code=c['code'], kind=c['kind'], cname=c['name'], cunit=c['unit'],
                              cvol=c['volume'], csec=c['section'], csub=c['subsection'],
                              clabel=c['page_label'], cpdf=c['page_pdf'], how=how, rank=rank_of(how)))
+    # 施工歩掛（WB…）は、各歩掛のページにある日当り施工量の表を優先する
+    progress('施工歩掛のページの日当り施工量を読み取り中')
+    cmap = {c['code']: c for c in codes}
+    bukrows = []
+    for v in vols:
+        got, _tables = ext_buk.extract(v, v['path'])
+        for code, lst in got.items():
+            c = cmap[code]
+            for k, x in enumerate(lst, 1):
+                how = x['how']
+                rank = 'A' if how == '単価表の参照表' else ('計算' if how.startswith('計算') else 'B')
+                bukrows.append(dict(
+                    no='', nendo=nendo, group=v['volume'], kousyu=c['section'], title=x['item'],
+                    cond=cond_text(x['cond']), valhead=x['valhead'], value=x['value'], unit=x['unit'],
+                    src_label=x['src_label'], src_pdf=x['src_pdf'], src_vol=v['volume'], seq=k, extract=x['mode'],
+                    code=code, kind=c['kind'], cname=c['name'], cunit=c['unit'], cvol=c['volume'],
+                    csec=c['section'], csub=c['subsection'], clabel=c['page_label'], cpdf=c['page_pdf'],
+                    how=how, rank=rank))
+    own = {r['code'] for r in bukrows}
+    rows = [r for r in rows if r['code'] not in own] + bukrows
+    progress(f'  → 施工歩掛 {len(own)}コード {len(bukrows)}行')
     linked = {}
     for r in rows: linked[r['code']] = linked.get(r['code'], 0) + 1
-    rows.sort(key=lambda r: (r['code'], r['no']))
+    # 並びはコードごとに元の表の順（＝入力条件の選択肢の順）のまま
+    rows.sort(key=lambda r: (r['code'], r['seq']))
 
     # ---- 出力 ----
     nk = nendo_key(nendo)
@@ -116,12 +139,12 @@ def build(pdfs, outdir=None, progress=print):
     info = dict(
         app=f'歩掛 日当り施工量 抽出アプリ v{APP_VER}', nendo=nendo, created=t0.strftime('%Y-%m-%d %H:%M'),
         sources=[dict(file=os.path.basename(v['path']), volume=v['volume'], pages=v['pages'], codes=len(v['codes'])) for v in vols],
-        counts=dict(daily_rows=len(recs), code_rows=len(rows), codes=len(codes),
+        counts=dict(daily_rows=len(recs), wb_page_rows=len(bukrows), code_rows=len(rows), codes=len(codes),
                     codes_with_daily=len(linked), warnings=len(warns)),
     )
     write_excel(os.path.join(outdir, stem + '.xlsx'), info, rows, allrows, codes, linked, warns)
     write_csv(os.path.join(outdir, stem + '_コード別.csv'), rows)
-    write_json(os.path.join(outdir, stem + '.json'), info, rows)
+    write_json(os.path.join(outdir, f'{nk}_日当り.json'), info, rows)
     progress(f'出力しました: {outdir}')
     return outdir, info
 
@@ -132,13 +155,13 @@ COLS_CODE = [
     ('コード掲載頁', 'clabel', 13), ('コード掲載頁(PDF)', 'cpdf', 9),
     ('日当り表の工種名', 'kousyu', 22), ('日当り表の項目', 'title', 26), ('施工条件', 'cond', 48), ('値の区分', 'valhead', 18),
     ('日当り施工量', 'value', 10), ('単位', 'unit', 9),
-    ('根拠頁（日当り）', 'src_label', 14), ('根拠頁(共通編PDF)', 'src_pdf', 9),
-    ('紐付け方法', 'how', 18), ('確度', 'rank', 5), ('表の読取り', 'extract', 12), ('通し番号', 'no', 7),
+    ('根拠頁（日当り）', 'src_label', 14), ('根拠の編', 'src_vol', 8), ('根拠頁(PDF)', 'src_pdf', 9),
+    ('紐付け方法', 'how', 18), ('確度', 'rank', 5), ('表の読取り', 'extract', 16), ('並び順', 'seq', 7),
 ]
 COLS_ALL = [
     ('通し番号', 'no', 7), ('年度', 'nendo', 10), ('編区分', 'group', 8), ('工種名', 'kousyu', 24), ('項目', 'title', 28),
     ('施工条件', 'cond', 50), ('値の区分', 'valhead', 18), ('日当り施工量', 'value', 10), ('単位', 'unit', 9),
-    ('根拠頁', 'src_label', 14), ('根拠頁(共通編PDF)', 'src_pdf', 9), ('対応する歩掛コード', 'codes', 26),
+    ('根拠頁', 'src_label', 14), ('根拠頁(PDF)', 'src_pdf', 9), ('対応する歩掛コード', 'codes', 26),
     ('紐付け方法', 'how', 18), ('確度', 'rank', 5), ('表の読取り', 'extract', 12),
 ]
 
@@ -151,7 +174,7 @@ def write_excel(path, info, rows, allrows, codes, linked, warns):
     head_fill = PatternFill('solid', fgColor='DDEBF7')
     bold = Font(bold=True)
     thin = Side(style='thin', color='BFBFBF')
-    rank_fill = {'A': None, 'B': PatternFill('solid', fgColor='FFF2CC'), 'C': PatternFill('solid', fgColor='FCE4D6')}
+    rank_fill = {'A': None, 'B': PatternFill('solid', fgColor='FFF2CC'), 'C': PatternFill('solid', fgColor='FCE4D6'), '計算': PatternFill('solid', fgColor='E2EFDA')}
 
     def sheet(ws, cols, data, rank_key='rank'):
         ws.append([c[0] for c in cols])
@@ -175,10 +198,13 @@ def write_excel(path, info, rows, allrows, codes, linked, warns):
         ('元資料', '')] + [(f"  {s['volume']}", f"{s['file']}（{s['pages']}頁・コード{s['codes']}件）") for s in info['sources']] + [
         ('', ''),
         ('日当り施工量の出典', '共通編 第Ⅰ編 第14章 ④「作業日当り標準作業量」の表'),
+        ('', '施工歩掛（WB…）は、各歩掛のページの日当り施工量の表を優先（単価表の摘要にある表番号で紐付け）'),
+        ('並び順', 'コードごとに元の表の順のまま（入力条件の選択肢の順）'),
         ('歩掛コードの出典', '各編の「施工単価入力基準表」（パッケージコード・施工歩掛コード）'),
         ('', ''),
         ('件数', ''),
         ('  日当り表の行数', info['counts']['daily_rows']),
+        ('  施工歩掛ページの行数', info['counts']['wb_page_rows']),
         ('  コード別の行数', info['counts']['code_rows']),
         ('  コード総数', info['counts']['codes']),
         ('  日当りが紐付いたコード数', info['counts']['codes_with_daily']),
@@ -243,7 +269,8 @@ def write_json(path, info, rows):
         e = by.setdefault(r['code'], dict(code=r['code'], name=r['cname'], unit=r['cunit'], kind=r['kind'],
                                           page=r['clabel'], volume=r['cvol'], daily=[]))
         e['daily'].append(dict(item=r['title'], cond=r['cond'], valhead=r['valhead'], value=r['value'],
-                               unit=r['unit'], src=r['src_label'], src_pdf=r['src_pdf'], rank=r['rank']))
+                               unit=r['unit'], src=r['src_label'], src_vol=r['src_vol'], src_pdf=r['src_pdf'],
+                               how=r['how'], rank=r['rank']))
     json.dump(dict(info=info, codes=list(by.values())), open(path, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
 

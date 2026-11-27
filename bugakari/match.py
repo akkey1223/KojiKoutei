@@ -25,6 +25,42 @@ def section_ok(c, kk):
         elif kk and (kk in ks or ks in kk): sc = max(sc, 1)
     return sc
 
+def _core(name, kk):
+    """コード名・条件値を（中心語の候補, 括弧内の語）に分ける。節名と同じ括弧書きは除く"""
+    s = key(name)
+    parens = re.findall(r'\(([^()]*)\)', s)
+    base = re.sub(r'\([^()]*\)', '', s).replace('作業', '')
+    parens = [p for p in parens if p and p not in kk and kk.find(p) < 0]
+    alts = [a for a in re.split(r'[・,]', base) if a]
+    return alts, set(parens)
+
+def by_work_name(conds, insec, kk):
+    out = []
+    for h, v in conds:
+        if not re.search(r'作業|工種|種別|区分|工程', h or ''): continue
+        valt, vpar = _core(v, kk)
+        if len(valt) != 1: continue
+        vb = valt[0]
+        if vb in ('設置', '撤去', '設置撤去', '有り', '無し'): continue
+        best = []
+        for c in insec:
+            alts, cpar = _core(c['name'], kk)
+            if not alts: continue
+            sc = 0
+            for a in alts:
+                if a == vb: sc = max(sc, 3)
+                elif len(vb) >= 2 and a.startswith(vb): sc = max(sc, 2)
+            if not sc: continue
+            if cpar and vpar and not (cpar & vpar): continue        # 人力施工 ⇔ 機械施工 の食い違い
+            if cpar and not vpar: sc -= 1
+            if vpar and cpar and (cpar & vpar): sc += 1
+            best.append((sc, c))
+        if best:
+            top = max(s for s, c in best)
+            if top >= 2:
+                return [(c, '作業名一致') for s, c in best if s == top]
+    return out
+
 def best_codes(rec_kousyu, title, conds, codes, group_vol):
     """1レコードについて当てはまるコードを返す [(code, 方法)]。方法の先頭語で確からしさが分かる"""
     kt, kk = key(title), key(rec_kousyu)
@@ -47,6 +83,10 @@ def best_codes(rec_kousyu, title, conds, codes, group_vol):
     if hits:
         m = max(sec_score(c) for c in hits)
         return [(c, '名称一致') for c in hits if sec_score(c) == m]
+    # (b2) 条件欄の作業名などがコード名の中心語と一致（例：作業名＝除根作業 → 除根(伐木除根)）
+    hit = by_work_name(conds, insec, kk)
+    if hit:
+        return hit
     # (c) 同じ工種（節）の中で名称が似ているもの
     sc = sorted(((difflib.SequenceMatcher(None, loose(c['name']), lk).ratio(), c) for c in insec), key=lambda x: -x[0])
     if sc and sc[0][0] >= 0.75:
