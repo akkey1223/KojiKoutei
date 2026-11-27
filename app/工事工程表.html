@@ -198,6 +198,8 @@ body:not(.admin) .adm{display:none!important}
 .sbd{flex:none;min-width:17px;height:17px;border-radius:9px;color:#fff;font-size:10px;font-weight:700;display:inline-grid;place-items:center;padding:0 3px;margin-right:2px}
 .row.hov{outline:2px solid var(--hc,var(--acc));outline-offset:-2px;position:relative;z-index:1}
 g.hov rect.pb,g.hov>rect:first-of-type{stroke:var(--ink);stroke-width:2}
+.crb{fill:none;stroke-width:2.4;pointer-events:none}
+.crp{fill:none;stroke-width:2.6;pointer-events:stroke}
 .selbar{fill:none;stroke:var(--ink);stroke-width:1.6;stroke-dasharray:3 2;pointer-events:none}
 .row.mine{box-shadow:inset 3px 0 0 #2f855a}
 table.ut th{text-align:left;font-size:12px;color:var(--mut);font-weight:400;padding:4px}
@@ -247,6 +249,7 @@ table.ut td{border-top:1px solid var(--line2)}
     </div>
     <div class="grp"><span class="gl">左の表</span><select class="btn" id="v-show" title="左の表に出す項目（バーの表示は変わりません）"><option value="both">予定・実施</option><option value="plan">予定</option><option value="act">実施</option></select></div>
     <div class="grp"><span class="gl">表示</span>
+      <label class="chk"><input type="checkbox" id="v-crit"> クリティカルパス</label>
       <label class="chk"><input type="checkbox" id="v-lp"> 予定パス</label>
       <label class="chk"><input type="checkbox" id="v-la"> 実施パス</label>
       <label class="chk"><input type="checkbox" id="v-ln"> タスク名</label>
@@ -688,7 +691,7 @@ function jpHolidays(y){
 }
 
 /* ---------- 状態 ---------- */
-let state,undoS=[],redoS=[],C={},byId={},kids={},IDX=new Map(),ROWS=[],FULL=[],WBS={},R=null,sel=null,dirty=false,DW=22,TOTH=0,SUBI={};
+let CRIT=null,state,undoS=[],redoS=[],C={},byId={},kids={},IDX=new Map(),ROWS=[],FULL=[],WBS={},R=null,sel=null,dirty=false,DW=22,TOTH=0,SUBI={};
 /* 畳んだ行に子のバーが2本以上あるとき：見出し(MH)＋子ごとの入力行。子とバーは同じ色の番号で対応させる */
 const MH=20,SUBC=['#7c3aed','#059669','#db2777','#0891b2','#b45309','#475569','#ea580c','#4f46e5'];
 const mode={path:false,rel:false,last:null};
@@ -727,8 +730,8 @@ function sample(){
   return{title:'○○川 河道掘削工事',sample:true,savedAt:0,
     settings:{sat:true,sun:true,nat:true,periods:[{name:'河川の出水期',from:'2026-06-01',to:'2026-10-31',yearly:true,y0:2026,y1:9999}],
       koji:Object.assign({},KOJI0,{place:'○○県○○市地先',from:'2027-01-12',to:'2027-12-24',rainRate:0.9,jigyo:'河川改修',kubun:'築堤･護岸',kyokuCode:'86',kyokuName:'近畿地方整備局',taishoName:'河川工事',A:11.02,b:0.173,prep:40,clean:20}),
-      colors:{plan:'#2563c9',act:'#ef7d1a',parent:'#3a4452',linkPlan:'#2563c9',linkAct:'#c2410c'}},
-    view:{show:'both',sort:'input',showPlanLinks:true,showActLinks:true,lblName:true,lblStart:true,lblEnd:true,lblAct:true,lblWait:true,dw:14,leftW:640,kind:'plan',shadeWeek:false},
+      colors:{plan:'#2563c9',act:'#ef7d1a',parent:'#3a4452',linkPlan:'#2563c9',linkAct:'#c2410c',crit:'#e11d48'}},
+    view:{show:'both',showCrit:true,sort:'input',showPlanLinks:true,showActLinks:true,lblName:true,lblStart:true,lblEnd:true,lblAct:true,lblWait:true,dw:14,leftW:640,kind:'plan',shadeWeek:false},
     tasks:[
       T('p1','準備工',null,{qty:1,unit:'式'}),
       T('t11','準備工','p1',{startRule:{type:'fixed',date:'2027-01-12'},qty:1,unit:'式',work:30,rainRate:0,restricted:false,proc:'01 準備'}),
@@ -791,7 +794,7 @@ function normalize(){
   state.tasks=out;
 }
 function index(){byId={};kids={};IDX=new Map();state.tasks.forEach((t,i)=>{byId[t.id]=t;IDX.set(t.id,i)});for(const t of state.tasks){const k=t.parent||'root';(kids[k]=kids[k]||[]).push(t)}}
-function recompute(){offCache.clear();normalize();index();C={};for(const t of state.tasks)comp(t,new Set());
+function recompute(){offCache.clear();normalize();index();C={};for(const t of state.tasks)comp(t,new Set());CRIT=null;
   /* 期限：日程は動かさず、予定完了日が期限を過ぎた日数（休日考慮時は稼働日）を求める */
   for(const t of state.tasks){const c=C[t.id];if(!c||c.parent||!t.deadline)continue;const dl=curOf(t.deadline,c.cal);if(dl==null)continue;c.dl=dl;
     let k=0;if(c.pe>dl){if(c.cal){for(let n=dl+1;n<=c.pe;n++)if(!off(n))k++;k=Math.max(1,k)}else k=c.pe-dl}c.over=k}}
@@ -834,6 +837,37 @@ function comp(t,vis){
     r.segs=[[ps,pe]];r.asegs=as!=null?[[as,r.aeDraw]]:[];
   }
   vis.delete(t.id);C[t.id]=r;return r;
+}
+
+/* ---------- クリティカルパス ----------
+   最後に終わるタスク（予定完了日が最も遅い末端のタスク）から、日付を決めている関連付けだけをさかのぼる。
+   ・開始日で拘束：完了日＝開始日＋暦日数なので、開始日を決めている関連付けへ進む
+   ・完了日で拘束／両方で拘束：完了日を決めている関連付けへ進む
+   ・関連付けのうち、計算した日付がその日付と一致しているもの（複数基準なら最も遅い／早い日を決めたもの）が「決めている」関連付け
+   線は関連付けの基準どおりに引く：完了→開始、開始→開始（開始日同士）、完了→完了（完了日同士）、開始→完了 */
+function critPath(){
+  if(CRIT)return CRIT;
+  const out={bars:new Set(),edges:[],end:null};
+  const leaves=state.tasks.filter(t=>!(kids[t.id]||[]).length&&C[t.id]);
+  if(!leaves.length)return CRIT=out;
+  const mx=Math.max(...leaves.map(t=>C[t.id].pe));out.end=mx;
+  const seen=new Set(),stack=leaves.filter(t=>C[t.id].pe===mx).map(t=>[t.id,'end']);
+  const go=(id,side,edge)=>{
+    if((kids[id]||[]).length){const c=C[id];for(const l of leafIds(id)){const x=C[l];if(x&&(side==='end'?x.pe===c.pe:x.ps===c.ps)){if(edge)out.edges.push(Object.assign({},edge,{from:l}));stack.push([l,side])}}return}
+    if(edge)out.edges.push(Object.assign({},edge,{from:id}));stack.push([id,side]);
+  };
+  let guard=0;
+  while(stack.length&&guard++<20000){
+    const[id,side]=stack.pop(),key0=id+':'+side;if(seen.has(key0))continue;seen.add(key0);
+    const t=byId[id],c=C[id];if(!t||!c)continue;out.bars.add(id);
+    const key=side==='end'?(t.anchor==='start'?null:'endRule'):(t.anchor==='end'?null:'startRule');
+    if(!key){stack.push([id,side==='end'?'start':'end']);continue}
+    const r=t[key];if(!r||r.type!=='rel')continue;
+    const d=curOf(r,c.cal);if(d==null)continue;
+    for(const e of r.refs||[]){const x=C[e.ref];if(!x)continue;const v=addW(e.base==='start'?x.ps:x.pe,+e.offset||0,c.cal);
+      if(v===d)go(e.ref,e.base,{fromSide:e.base,to:id,toSide:side,offset:+e.offset||0})}
+  }
+  return CRIT=out;
 }
 const usedKeys=t=>t.anchor==='end'?['endRule']:t.anchor==='both'?['startRule','endRule']:['startRule'];
 function deps(t){const ch=kids[t.id]||[];if(ch.length)return ch.map(c=>c.id);return usedKeys(t).flatMap(k=>{const r=t[k];return r&&r.type==='rel'?(r.refs||[]).map(e=>e.ref):[]})}
@@ -878,7 +912,7 @@ function exits(id){if(!(kids[id]||[]).length)return[id];const{L,E}=innerEdges(id
 function fixParentLinks(){
   const out=[],seen=new Set();
   for(const l of state.links){if(!byId[l.from]||!byId[l.to])continue;
-    for(const f of exits(l.from))for(const t of entries(l.to)){if(f===t)continue;const k=f+'>'+t+'>'+l.kind;if(seen.has(k))continue;seen.add(k);out.push(f===l.from&&t===l.to?l:Object.assign({id:uid(),from:f,to:t,kind:l.kind},l.note?{note:l.note}:{}))}}
+    for(const f of exits(l.from))for(const t of entries(l.to)){if(f===t)continue;const k=f+'>'+t+'>'+l.kind;if(seen.has(k))continue;seen.add(k);out.push(f===l.from&&t===l.to?l:Object.assign({id:uid(),from:f,to:t,kind:l.kind},l.note?{note:l.note}:{},l.how?{how:l.how}:{}))}}
   state.links=out;
 }
 function inheritToChild(P,ch,isNew){
@@ -1004,7 +1038,7 @@ function renderHead(){
 function stickMonths(){const L=rbody.scrollLeft;for(const t of hsvg.querySelectorAll('.mt')){const x0=+t.dataset.x0,x1=+t.dataset.x1;t.setAttribute('x',Math.max(x0+6,Math.min(L+6,x1-80)))}}
 function renderChart(){
   const S=state.settings,V=state.view,W=(R.to-R.from+1)*DW,H=Math.max(TOTH+80,rbody.clientHeight);
-  const LN=i=>ROWS[i].lane,TP=i=>ROWS[i].top,BT=i=>ROWS[i].top+ROWS[i].h;
+  const LN=i=>ROWS[i].lane,TP=i=>ROWS[i].top,BT=i=>ROWS[i].top+ROWS[i].h,CP=critPath();
   let bg='',fg='',lk='',lb='';
   if(V.shadeWeek)for(let d=R.from;d<=R.to;d++)if(dispOff(d)&&!off(d))bg+=`<rect x="${X(d)}" y="0" width="${DW}" height="${H}" class="hol"/>`;
   for(let d=R.from;d<=R.to;){if(off(d)){let e=d;while(e+1<=R.to&&off(e+1))e++;bg+=`<rect x="${X(d)}" y="0" width="${(e-d+1)*DW}" height="${H}" class="rst"><title>${esc(off(d))}（作業不能期間）${esc(fmt(d))}〜${esc(fmt(e))}</title></rect>`;d=e+1}else d++}
@@ -1019,7 +1053,7 @@ function renderChart(){
     if(k1!=null&&k1>=R.from&&k1<=R.to)lb+=`<line x1="${X(k1)}" x2="${X(k1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k1)+3}" y="${TOTH+16}" class="kkt">工期始 ${md(k1)}</text>`;
     if(k2!=null&&k2>=R.from&&k2<=R.to)lb+=`<line x1="${X(k2+1)}" x2="${X(k2+1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k2+1)-3}" y="${TOTH+16}" class="kkt" text-anchor="end">工期末 ${md(k2)}</text>`}
   if(todayN>=R.from&&todayN<=R.to)bg+=`<rect x="${X(todayN)}" y="0" width="${DW}" height="${H}" class="todayc"/><line x1="${X(todayN)+DW/2}" x2="${X(todayN)+DW/2}" y1="0" y2="${H}" class="todayl"/>`;
-  const tipOf=(t,c)=>esc(`${WBS[t.id]} ${t.name}${t.spec?' '+t.spec:''}${t.qty!==''&&t.qty!=null?`　${t.qty}${t.unit}`:''}\n予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}（暦日 ${c.dur}日）`+(!c.parent&&c.work!=null?`\n${durText(t,c)}`:'')+(c.as!=null?`\n実施 ${fmt(c.as)} 〜 ${c.ae!=null?fmt(c.ae):'作業中'}`:'')+`\n進捗 ${Math.round(c.prog)}%`+(c.dl!=null?`\n期限 ${fmt(c.dl)}${c.over?`（${c.over}日超過）`:'（期限内）'}`:'')+(c.err?'\n⚠ '+c.err:''));
+  const tipOf=(t,c)=>esc(`${WBS[t.id]} ${t.name}${t.spec?' '+t.spec:''}${t.qty!==''&&t.qty!=null?`　${t.qty}${t.unit}`:''}\n予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}（暦日 ${c.dur}日）`+(!c.parent&&c.work!=null?`\n${durText(t,c)}`:'')+(c.as!=null?`\n実施 ${fmt(c.as)} 〜 ${c.ae!=null?fmt(c.ae):'作業中'}`:'')+`\n進捗 ${Math.round(c.prog)}%`+(c.dl!=null?`\n期限 ${fmt(c.dl)}${c.over?`（${c.over}日超過）`:'（期限内）'}`:'')+(c.err?'\n⚠ '+c.err:'')+(V.showCrit!==false&&CP.bars.has(t.id)?'\nクリティカルパス上のタスク':''));
   const pick=(t,c,top)=>{const x1=X(c.ps),w=X(c.pe+1)-x1;
     if(mode.rel&&mode.last===t.id)fg+=`<rect x="${x1-3}" y="${top+1}" width="${w+6}" height="${HALF-1}" rx="4" class="pick"/>`;
     if(mode.path&&mode.last===t.id){if(V.kind==='plan'||c.as==null)fg+=`<rect x="${x1-3}" y="${top+(V.kind==='plan'?1:HALF)}" width="${w+6}" height="${HALF-1}" rx="4" class="pick"/>`;else fg+=`<rect x="${X(c.as)-3}" y="${top+HALF}" width="${X(c.aeDraw+1)-X(c.as)+6}" height="${HALF-1}" rx="4" class="pick"/>`}};
@@ -1032,6 +1066,7 @@ function renderChart(){
     if(c.as!=null){const a1=X(c.as),a2=X(c.aeDraw+1),open=c.ae==null;
       fg+=`<g data-part="act" data-lid="${t.id}"${inRow?' data-sub="1"':''}><title>${tip}</title><rect x="${a1}" y="${top+HALF+2}" width="${a2-a1}" height="${HALF-5}" rx="3" fill="${ca}"${open?` fill-opacity=".45" stroke="${ca}" stroke-dasharray="4 2"`:''}/></g>`;
       if(V.lblAct&&!inRow){lb+=`<text x="${a1-4}" y="${top+HALF+13}" class="lb ac" text-anchor="end">${md(c.as)}</text>`;if(!open)lb+=`<text x="${a2+4}" y="${top+HALF+13}" class="lb ac">${md(c.ae)}</text>`}}
+    if(V.showCrit!==false&&CP.bars.has(t.id))fg+=`<rect x="${x1-1.5}" y="${top+1.5}" width="${w+3}" height="${HALF-2}" rx="4" class="crb" stroke="${S.colors.crit}"><title>クリティカルパス</title></rect>`;
     const si=inRow&&SUBI[t.id];
     if(si){const same=inRow==='row'?si.peers.filter(o=>SUBI[o].j<si.j&&C[o].ps===c.ps).length:0,bx=(w>=24?x1+9:x1-9)+same*17;lb+=`<g data-lid="${t.id}" data-sub="1"><circle cx="${bx}" cy="${top+HALF/2+1}" r="7.5" fill="${si.col}" stroke="#fff" stroke-width="1.2"/><text x="${bx}" y="${top+HALF/2+4.5}" class="lbin" text-anchor="middle">${si.j+1}</text></g>`}
     if(t.id===sel&&(inRow||V.show!=='both')){fg+=`<rect x="${x1-2}" y="${top+1}" width="${w+4}" height="${HALF-1}" rx="4" class="selbar"/>`;if(c.as!=null)fg+=`<rect x="${X(c.as)-2}" y="${top+HALF}" width="${X(c.aeDraw+1)-X(c.as)+4}" height="${HALF-1}" rx="4" class="selbar"/>`}
@@ -1069,9 +1104,10 @@ function renderChart(){
     if(L.kind==='plan'?!V.showPlanLinks:!V.showActLinks)continue;
     const ia=rowOf(L.from),ib=rowOf(L.to);if(ia==null||ib==null)continue;
     const a=C[L.from],b=C[L.to];if(!a||!b)continue;let ea,sb,ya,yb;
-    if(L.kind==='plan'){ea=a.pe;sb=b.ps;ya=LN(ia)+9.5;yb=LN(ib)+9.5}
+    const how=L.kind==='plan'&&L.how?L.how:'es';
+    if(L.kind==='plan'){ea=how[0]==='s'?a.ps-1:a.pe;sb=how[1]==='e'?b.pe+1:b.ps;ya=LN(ia)+9.5;yb=LN(ib)+9.5}
     else{if(a.as==null||b.as==null)continue;ea=a.aeDraw;sb=b.as;ya=LN(ia)+HALF+8.5;yb=LN(ib)+HALF+8.5}
-    const x1=X(ea+1),x2=X(sb),bad=sb<=ea,hh=6.5,dir=Math.sign(yb-ya);let d;
+    const x1=X(ea+1),x2=X(sb),bad=how==='es'&&sb<=ea,hh=6.5,dir=Math.sign(yb-ya);let d;
     if(bad&&dir!==0){const ym=dir>0?TP(ib):BT(ib);d=`M${x1} ${ya}H${x1+8}V${ym}H${x2-10}V${yb}H${x2}`}
     else if(dir===0)d=`M${x1} ${ya}L${x2} ${yb}`;
     else if(x2-x1>=4)d=`M${x1} ${ya+dir*hh}V${yb}H${x2}`;
@@ -1081,6 +1117,14 @@ function renderChart(){
       const ly=bad&&dir!==0?(dir>0?TP(ib):BT(ib)):yb,xm=(x1+x2)/2;
       lb+=`<text x="${xm}" y="${ly-4}" class="wn" fill="${col}" text-anchor="middle">${esc(L.note)}</text>`}
     lk+=`<g class="lk" data-link="${L.id}"><title>${esc((L.kind==='plan'?'予定パス':'実施パス')+'：'+byId[L.from].name+' → '+byId[L.to].name+(bad?'（後続の開始が先行の完了以前）':'')+(L.note?'\nコメント：'+L.note:'')+(mode.path?'\nクリックでコメント・削除':''))}</title><path d="${d}" class="lkh"/><path d="${d}" stroke="${col}" class="lkp${L.kind==='plan'?'':' la'}" marker-end="url(#ar-${bad?'bad':L.kind})"/></g>`;
+  }
+  /* クリティカルパスの線：関連付けの基準どおりの点から点へ（完了→開始、開始→開始、完了→完了、開始→完了） */
+  if(V.showCrit!==false)for(const E of CP.edges){
+    const ia=rowOf(E.from),ib=rowOf(E.to);if(ia==null||ib==null)continue;const a=C[E.from],b=C[E.to];if(!a||!b)continue;
+    const xa=E.fromSide==='start'?X(a.ps):X(a.pe+1),xb=E.toSide==='start'?X(b.ps):X(b.pe+1),ya=LN(ia)+9.5,yb=LN(ib)+9.5,dv=Math.sign(yb-ya);
+    const d=dv===0?`M${xa} ${ya}L${xb} ${yb}`:`M${xa} ${ya+dv*6.5}V${yb}H${xb}`;
+    const sn={start:'開始日',end:'完了日'};
+    lk+=`<g class="lk"><title>${esc(`クリティカルパス：「${nm(E.from)}」の${sn[E.fromSide]} → 「${nm(E.to)}」の${sn[E.toSide]}（${E.offset>=0?'+':''}${E.offset}日）`)}</title><path d="${d}" class="crp" stroke="${S.colors.crit}" marker-end="url(#ar-crit)"/></g>`;
   }
   /* 選択中のバーの関連付け（パスとして引かれていないもの）を一時的に灰色の破線で示す */
   const info=[];
@@ -1105,7 +1149,7 @@ function renderChart(){
   if(info.length&&!drag){ri.innerHTML=`<b>関連付け（${info.length}件）</b><ul>${info.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><small>破線：パスを引いていない関連付け</small>`;ri.style.display='block'}else ri.style.display='none';
   const mk=(id,c)=>`<marker id="ar-${id}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="${c}"/></marker>`;
   csvg.setAttribute('width',W+40);csvg.setAttribute('height',H);
-  csvg.innerHTML=`<defs>${mk('plan',S.colors.linkPlan)}${mk('actual',S.colors.linkAct)}${mk('bad','#d62828')}${mk('rel','#8a929c')}<pattern id="ovh" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fde4e4"/><rect width="2.5" height="6" fill="#d62828"/></pattern></defs><g>${bg}</g><g>${fg}</g><g>${lk}</g><g>${lb}</g>`;
+  csvg.innerHTML=`<defs>${mk('plan',S.colors.linkPlan)}${mk('actual',S.colors.linkAct)}${mk('bad','#d62828')}${mk('rel','#8a929c')}${mk('crit',S.colors.crit)}<pattern id="ovh" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fde4e4"/><rect width="2.5" height="6" fill="#d62828"/></pattern></defs><g>${bg}</g><g>${fg}</g><g>${lk}</g><g>${lb}</g>`;
 }
 function renderAll(keepRange){
   const ae=document.activeElement;let fk=null;
@@ -1124,7 +1168,7 @@ function updateUI(){
   const wb=$('#whob');wb.textContent=ME?`${ME.name}（${ROLE[ME.role]}）`:'閲覧のみ';wb.className='whob'+(isAdmin()?' adm-b':'');
   $('#b-me').textContent=FS.moved?'新しい場所へ':ME?'ログアウト':'ログイン';$('#b-me').title=ME?'ログアウトして閲覧のみに戻ります':'ログインして担当分を編集します';
   $('#v-sort').value=V.sort;$('#v-show').value=V.show||'both';$('#v-kind').value=V.kind;
-  $('#v-lw').checked=V.lblWait;$('#v-lp').checked=V.showPlanLinks;$('#v-la').checked=V.showActLinks;$('#v-ln').checked=V.lblName;$('#v-ls').checked=V.lblStart;$('#v-le').checked=V.lblEnd;$('#v-lact').checked=V.lblAct;
+  $('#v-crit').checked=V.showCrit!==false;$('#v-lw').checked=V.lblWait;$('#v-lp').checked=V.showPlanLinks;$('#v-la').checked=V.showActLinks;$('#v-ln').checked=V.lblName;$('#v-ls').checked=V.lblStart;$('#v-le').checked=V.lblEnd;$('#v-lact').checked=V.lblAct;
   const maxD=maxDepth(),cur=curLevel();
   $('#olv').innerHTML=Array.from({length:maxD+1},(_,i)=>`<button class="btn olv${cur===i+1?' cur':''}" data-lv="${i+1}" title="階層${i+1}まで表示（それより下は畳む）">${i+1}</button>`).join('');
   $('#zoom').value=DW;$('#b-undo').disabled=!undoS.length;$('#b-redo').disabled=!redoS.length;
@@ -1416,7 +1460,8 @@ ${pb?`<p class="hint">「${esc(nm(b))}」は親タスクのため、入口の子
       for(const[id,,ref]of r.brk)drop.push([ref,id]);
       state.links=state.links.filter(l=>!(l.kind==='plan'&&drop.some(([x,y])=>(l.from===x&&l.to===y)||(l.from===y&&l.to===x))));
       applyRel(cfg,r.eff,r.brk);
-      if(cfg.path)for(const a2 of cfg.as)for(const b2 of cfg.bs){const f=rev?b2:a2,t=rev?a2:b2;if(!state.links.some(l=>l.from===f&&l.to===t&&l.kind==='plan'))state.links.push({id:uid(),from:f,to:t,kind:'plan'})}});
+      const how=rev?'es':(cfg.base==='start'?'s':'e')+(cfg.side==='end'?'e':'s');
+      if(cfg.path)for(const a2 of cfg.as)for(const b2 of cfg.bs){const f=rev?b2:a2,t=rev?a2:b2;const ex=state.links.find(l=>l.from===f&&l.to===t&&l.kind==='plan');if(ex){if(how!=='es')ex.how=how;else delete ex.how}else state.links.push(Object.assign({id:uid(),from:f,to:t,kind:'plan'},how!=='es'?{how}:{}))}});
     closeModal();mode.last=b;renderChart();toast('関連付けました。続けて次のタスクを選べます')};
   draw();
 }
@@ -1656,7 +1701,7 @@ function openSettings(){if(!isAdmin())return deny('作業不能期間・色の�
 <p class="hint">土日祝は雨休率に含まれる扱いのため、日数の計算には使いません。日付の色分けと網掛けの表示だけに使います。</p>
 <details style="margin-top:10px"><summary>祝日一覧（${y}年・${y+1}年）</summary><ul class="hl">${hl(y)}${hl(y+1)}</ul></details>
 <h3>既定の色</h3>
-<div class="rr"><label>予定バー <input type="color" id="s-c-plan" value="${S.colors.plan}"></label><label>実施バー <input type="color" id="s-c-act" value="${S.colors.act}"></label><label>親タスク <input type="color" id="s-c-parent" value="${S.colors.parent}"></label><label>予定パス <input type="color" id="s-c-linkPlan" value="${S.colors.linkPlan}"></label><label>実施パス <input type="color" id="s-c-linkAct" value="${S.colors.linkAct}"></label></div>
+<div class="rr"><label>予定バー <input type="color" id="s-c-plan" value="${S.colors.plan}"></label><label>実施バー <input type="color" id="s-c-act" value="${S.colors.act}"></label><label>親タスク <input type="color" id="s-c-parent" value="${S.colors.parent}"></label><label>予定パス <input type="color" id="s-c-linkPlan" value="${S.colors.linkPlan}"></label><label>実施パス <input type="color" id="s-c-linkAct" value="${S.colors.linkAct}"></label><label>クリティカルパス <input type="color" id="s-c-crit" value="${S.colors.crit}"></label></div>
 <p class="hint">タスクごとの色は、行の No. をダブルクリックして開く詳細設定で変えられます。</p>
 <div class="mf"><span class="sp"></span><button class="btn pri" id="s-close">閉じる</button></div>`);
   const box=$('#mbox');
@@ -1929,7 +1974,7 @@ on('#v-sort','change',e=>{state.view.sort=e.target.value;saveLocalView();renderA
 on('#v-show','change',e=>{state.view.show=e.target.value;saveLocalView();renderAll(true)});
 on('#v-kind','change',e=>{state.view.kind=e.target.value;mode.last=null;renderChart()});
 const vt=(id,k)=>on(id,'change',e=>{state.view[k]=e.target.checked;saveLocalView();renderChart()});
-vt('#v-lp','showPlanLinks');vt('#v-la','showActLinks');vt('#v-ln','lblName');vt('#v-ls','lblStart');vt('#v-le','lblEnd');vt('#v-lact','lblAct');vt('#v-lw','lblWait');
+vt('#v-crit','showCrit');vt('#v-lp','showPlanLinks');vt('#v-la','showActLinks');vt('#v-ln','lblName');vt('#v-ls','lblStart');vt('#v-le','lblEnd');vt('#v-lact','lblAct');vt('#v-lw','lblWait');
 on('#zoom','input',e=>{const d0=R.from+(rbody.scrollLeft+rbody.clientWidth/2)/DW;DW=+e.target.value;state.view.dw=DW;renderHead();renderChart();rbody.scrollLeft=(d0-R.from)*DW-rbody.clientWidth/2});
 on('#zoom','change',()=>saveLocalView());
 const goToday=()=>{rbody.scrollLeft=Math.max(0,X(todayN)-rbody.clientWidth/3)};
