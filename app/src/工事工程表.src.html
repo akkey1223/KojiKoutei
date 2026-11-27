@@ -63,6 +63,13 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .c.num{justify-content:flex-end;padding-right:8px}
 .c.rel input{color:var(--acc);font-weight:700}
 .c.rel{box-shadow:inset 3px 0 0 var(--acc)}
+.c.rev input{color:#7c3aed;font-weight:700}
+.c.rev{box-shadow:inset 3px 0 0 #7c3aed}
+.c.pin input{color:#b45309;font-weight:700}
+.c.pin{box-shadow:inset 3px 0 0 #b45309}
+.anc{flex:none;font-size:12px;color:#b45309;margin-right:2px}
+.ancb{fill:none;stroke:#b45309;stroke-width:2.4;pointer-events:none}
+.anct{font-size:12px;fill:#b45309;font-weight:700;pointer-events:none}
 .grip{cursor:grab;color:var(--mut);justify-content:center;user-select:none;touch-action:none}
 .wbs{color:var(--mut);font-size:12px;font-variant-numeric:tabular-nums;cursor:pointer}
 .name{gap:2px}
@@ -235,12 +242,13 @@ table.ut td{border-top:1px solid var(--line2)}
       <button class="btn" id="b-in" title="直前のタスクの子にする">下の階層へ →</button>
       <button class="btn" id="b-up" title="上へ">↑</button>
       <button class="btn" id="b-down" title="下へ">↓</button>
+      <button class="btn" id="b-pin" title="選んでいる工程をアンカー（日程の基準）にする／外す。前後の関連付けした工程はアンカーに合わせて順算・逆算で決まります">⚓ アンカー</button>
       <button class="btn" id="b-detail" title="選んでいるタスクの詳細設定（バーの右クリック・ダブルクリック、表の No. のダブルクリックでも開きます）">詳細設定</button>
       <button class="btn danger" id="b-del">削除</button>
     </div>
     <div class="grp"><span class="gl">アウトライン</span><span id="olv" class="grp"></span><button class="btn" id="b-expand" title="すべての階層を開く">すべて展開</button></div>
     <div class="grp"><span class="gl">並び</span>
-      <select class="btn" id="v-sort"><option value="input">入力順</option><option value="date">工程順（開始予定日）</option><option value="proc">工程区分順</option></select>
+      <select class="btn" id="v-sort" title="入力順：設計書（入力）の並びのまま／工程区分順：工程区分ごとにまとめ、区分の中は設計書の並び"><option value="input">入力順</option><option value="proc">工程区分順</option></select>
     </div>
     <div class="grp ed"><span class="gl">クリック操作</span>
       <button class="btn" id="b-rel" title="バーを押した順に工程を関連付けます（先行 → 後続）">関連付けモード</button>
@@ -321,7 +329,7 @@ function jpHolidays(y){
 }
 
 /* ---------- 状態 ---------- */
-let CRIT=null,state,undoS=[],redoS=[],C={},byId={},kids={},IDX=new Map(),ROWS=[],FULL=[],WBS={},R=null,sel=null,dirty=false,DW=22,TOTH=0,SUBI={};
+let CRIT=null,REV=new Set(),REVIN={},state,undoS=[],redoS=[],C={},byId={},kids={},IDX=new Map(),ROWS=[],FULL=[],WBS={},R=null,sel=null,dirty=false,DW=22,TOTH=0,SUBI={};
 /* 畳んだ行に子のバーが2本以上あるとき：見出し(MH)＋子ごとの入力行。子とバーは同じ色の番号で対応させる */
 const MH=20,SUBC=['#7c3aed','#059669','#db2777','#0891b2','#b45309','#475569','#ea580c','#4f46e5'];
 const mode={path:false,rel:false,last:null};
@@ -424,15 +432,32 @@ function normalize(){
   state.tasks=out;
 }
 function index(){byId={};kids={};IDX=new Map();state.tasks.forEach((t,i)=>{byId[t.id]=t;IDX.set(t.id,i)});for(const t of state.tasks){const k=t.parent||'root';(kids[k]=kids[k]||[]).push(t)}}
-function recompute(){offCache.clear();normalize();index();C={};for(const t of state.tasks)comp(t,new Set());CRIT=null;
+/* ---------- アンカー（日程の基準にする工程）と関連付けの向き ----------
+   アンカーにした工程（pin＝開始日）は、その日付から動かさない。
+   ・アンカーより前の工程：関連付けをたどってアンカーにつながる工程（アンカーの前工程、その前工程…）は、
+     関連付けの向きを逆にして、後ろの工程に合わせて決める（逆算）。前工程が複数の後工程につながるときは最も早い日
+   ・アンカーより後の工程：これまで通り関連付けのとおりに決まる（順算）ので、アンカーに合わせて動く
+   ・アンカーにつながっていない工程は、これまで通り。親タスクを基準にした関連付けは逆にしない */
+const relKey=(h,key,ref)=>h+'|'+key+'|'+ref;
+function planDirections(){
+  REV=new Set();REVIN={};
+  const isLeaf=id=>byId[id]&&!(kids[id]||[]).length,rels=[],byH={},A=new Set();
+  for(const t of state.tasks){if(!isLeaf(t.id))continue;if(t.pin)A.add(t.id);
+    for(const key of usedKeys(t)){const r=t[key];if(r&&r.type==='rel')for(const e of r.refs||[])if(byId[e.ref]){const x={h:t.id,key,ref:e.ref,base:e.base,off:+e.offset||0,k:relKey(t.id,key,e.ref)};rels.push(x);(byH[t.id]=byH[t.id]||[]).push(x)}}}
+  if(!A.size)return;
+  const up=new Set(),st=[...A];
+  while(st.length){const h=st.pop();for(const r of byH[h]||[]){if(!isLeaf(r.ref)||A.has(r.ref)||up.has(r.ref))continue;up.add(r.ref);st.push(r.ref)}}
+  for(const r of rels)if((A.has(r.h)||up.has(r.h))&&up.has(r.ref)){REV.add(r.k);(REVIN[r.ref]=REVIN[r.ref]||[]).push(r)}
+}
+function recompute(){offCache.clear();normalize();index();planDirections();C={};for(const t of state.tasks)comp(t,new Set());CRIT=null;
   /* 期限：日程は動かさず、予定完了日が期限を過ぎた日数（休日考慮時は稼働日）を求める */
   for(const t of state.tasks){const c=C[t.id];if(!c||c.parent||!t.deadline)continue;const dl=curOf(t.deadline,c.cal);if(dl==null)continue;c.dl=dl;
     let k=0;if(c.pe>dl){if(c.cal){for(let n=dl+1;n<=c.pe;n++)if(!off(n))k++;k=Math.max(1,k)}else k=c.pe-dl}c.over=k}}
-function resolve(rule,cal,vis){
+function resolve(rule,cal,vis,hid,key){
   if(!rule)return null;
   if(rule.type!=='rel')return parse(rule.date);
   let out=null,n=0;const add=d=>{n++;out=out==null?d:(rule.mode==='min'?Math.min(out,d):Math.max(out,d))};
-  for(const e of rule.refs||[]){const ref=byId[e.ref];if(!ref)continue;const x=comp(ref,vis);if(!x)return null;add(addW(e.base==='start'?x.ps:x.pe,+e.offset||0,cal))}
+  for(const e of rule.refs||[]){const ref=byId[e.ref];if(!ref)continue;if(hid&&REV.has(relKey(hid,key,e.ref)))continue;const x=comp(ref,vis);if(!x)return null;add(addW(e.base==='start'?x.ps:x.pe,+e.offset||0,cal))}
   const fd=parse(rule.date);if(fd!=null)add(fd);
   return n?out:null;
 }
@@ -458,17 +483,37 @@ function comp(t,vis){
     const segs=mergeSegs(ch.map(c=>C[c.id]).filter(Boolean).flatMap(x=>x.segs),cal),asegs=mergeSegs(ch.map(c=>C[c.id]).filter(Boolean).flatMap(x=>x.asegs),cal);
     r={parent:true,segs,asegs,ps,pe,dur:span(ps,pe,cal),prog:ws?pgs/ws:0,as:anyA?as:null,ae:anyA&&allDone?ae:null,aeDraw:anyA?ae:null,cal,err:''};
   }else{
-    const D=calcDur(t),dur=D.dur;let ps,pe,err='';
-    if(t.anchor==='end'){let e=resolve(t.endRule,cal,vis);if(e==null){e=todayN;err='完了日の基準を解決できません（循環参照または未設定）'}pe=snapB(e,cal);ps=startFrom(pe,dur,cal)}
-    else if(t.anchor==='both'){let s=resolve(t.startRule,cal,vis),e=resolve(t.endRule,cal,vis);if(s==null){s=todayN;err='開始日の基準を解決できません'}if(e==null){e=s;err='完了日の基準を解決できません'}ps=snapF(s,cal);pe=snapB(e,cal);if(pe<ps){pe=ps;err='完了日が開始日より前になっています'}}
-    else{let s=resolve(t.startRule,cal,vis);if(s==null){s=todayN;err='開始日の基準を解決できません（循環参照または未設定）'}ps=snapF(s,cal);pe=endFrom(ps,dur,cal)}
+    const D=calcDur(t),dur=D.dur;let ps,pe,err='',back=null;
+    if(t.pin&&parse(t.pin)!=null){ps=snapF(parse(t.pin),cal);pe=endFrom(ps,dur,cal)}
+    else if(REVIN[t.id]){
+      /* 逆算：後の工程（拘束されている側）の日付から、このタスクの完了日（または開始日）を決める */
+      let pe1=Infinity,ps1=Infinity;back=[];
+      for(const r of REVIN[t.id]){const H=byId[r.h]&&comp(byId[r.h],vis);if(!H)continue;const hd=r.key==='endRule'?H.pe:H.ps,v=addW(hd,-r.off,cal);back.push(r);if(r.base==='end')pe1=Math.min(pe1,v);else ps1=Math.min(ps1,v)}
+      if(!isFinite(pe1)&&!isFinite(ps1)){pe1=todayN;err='逆算の基準を解決できません'}
+      pe=isFinite(pe1)?snapB(pe1,cal):Infinity;
+      if(isFinite(ps1))pe=Math.min(pe,endFrom(snapB(ps1,cal),dur,cal));
+      ps=startFrom(pe,dur,cal);
+    }
+    else if(t.anchor==='end'){let e=resolve(t.endRule,cal,vis,t.id,'endRule');if(e==null){e=todayN;err='完了日の基準を解決できません（循環参照または未設定）'}pe=snapB(e,cal);ps=startFrom(pe,dur,cal)}
+    else if(t.anchor==='both'){let s=resolve(t.startRule,cal,vis,t.id,'startRule'),e=resolve(t.endRule,cal,vis,t.id,'endRule');if(s==null&&e!=null)s=startFrom(snapB(e,cal),dur,cal);if(s==null){s=todayN;err='開始日の基準を解決できません'}if(e==null){e=s;err='完了日の基準を解決できません'}ps=snapF(s,cal);pe=snapB(e,cal);if(pe<ps){pe=ps;err='完了日が開始日より前になっています'}}
+    else{let s=resolve(t.startRule,cal,vis,t.id,'startRule');if(s==null){s=todayN;err='開始日の基準を解決できません（循環参照または未設定）'}ps=snapF(s,cal);pe=endFrom(ps,dur,cal)}
     const as=parse(t.as),ae=as!=null?parse(t.ae):null;
-    r={parent:false,ps,pe,dur:t.anchor==='both'?span(ps,pe,cal):dur,prog:clamp(+t.prog||0,0,100),as,ae,aeDraw:as!=null?(ae!=null?Math.max(ae,as):Math.max(as,todayN)):null,cal,err,work:D.work,rain:D.rain,rate:D.rate,pt:D.pt,src:D.src,derr:D.err||'',anchor:t.anchor};
+    r={parent:false,ps,pe,dur:t.anchor==='both'?span(ps,pe,cal):dur,prog:clamp(+t.prog||0,0,100),as,ae,aeDraw:as!=null?(ae!=null?Math.max(ae,as):Math.max(as,todayN)):null,cal,err,work:D.work,rain:D.rain,rate:D.rate,pt:D.pt,src:D.src,derr:D.err||'',anchor:t.anchor,back,pin:!!t.pin};
     r.segs=[[ps,pe]];r.asegs=as!=null?[[as,r.aeDraw]]:[];
   }
   vis.delete(t.id);C[t.id]=r;return r;
 }
 
+/* パスの線の点：関連付けの内容（基準の開始日／完了日 → 決まる側の開始日／完了日）から決める。関連付けが無ければ保存した how、それも無ければ完了→開始 */
+function linkHow(L){
+  const a=byId[L.from],b=byId[L.to],SN={start:'開始日',end:'完了日'};
+  const f=(t,ref)=>{if(!t)return null;const ks=[...new Set([...usedKeys(t),'startRule','endRule'])];for(const key of ks){const r=t[key];if(r&&r.type==='rel'){const e=(r.refs||[]).find(x=>x.ref===ref);if(e)return{key,e}}}return null};
+  let m=f(b,L.from);
+  if(m){const rv=REV.has(relKey(b.id,m.key,a.id)),o=+m.e.offset||0;return{how:(m.e.base==='start'?'s':'e')+(m.key==='endRule'?'e':'s'),desc:`関連付け：「${a.name}」の${SN[m.e.base]} ${o>=0?'+':''}${o}日 → 「${b.name}」の${m.key==='endRule'?'完了日':'開始日'}${rv?'（「'+a.name+'」は開始日の指定が無いため逆算）':''}`}}
+  m=f(a,L.to);
+  if(m){const o=+m.e.offset||0;return{how:(m.key==='endRule'?'e':'s')+(m.e.base==='start'?'s':'e'),desc:`関連付け：「${b.name}」の${SN[m.e.base]} ${o>=0?'+':''}${o}日 → 「${a.name}」の${m.key==='endRule'?'完了日':'開始日'}`}}
+  return{how:L.how||'es',desc:''};
+}
 /* ---------- クリティカルパス ----------
    最後に終わるタスク（予定完了日が最も遅い末端のタスク）から、日付を決めている関連付けだけをさかのぼる。
    ・開始日で拘束：完了日＝開始日＋暦日数なので、開始日を決めている関連付けへ進む
@@ -490,11 +535,15 @@ function critPath(){
   while(stack.length&&guard++<20000){
     const[id,side]=stack.pop(),key0=id+':'+side;if(seen.has(key0))continue;seen.add(key0);
     const t=byId[id],c=C[id];if(!t||!c)continue;out.bars.add(id);
+    if(c.pin)continue;
+    if(c.back){for(const r of c.back){const H=C[r.h];if(!H)continue;const hd=r.key==='endRule'?H.pe:H.ps,v=snapB(addW(hd,-r.off,c.cal),c.cal);
+        if(r.base==='end'?v===c.pe:v===c.ps){const hs=r.key==='endRule'?'end':'start';out.edges.push({from:r.h,fromSide:hs,to:id,toSide:r.base,offset:-r.off,rev:true});stack.push([r.h,hs])}}
+      continue}
     const key=side==='end'?(t.anchor==='start'?null:'endRule'):(t.anchor==='end'?null:'startRule');
     if(!key){stack.push([id,side==='end'?'start':'end']);continue}
     const r=t[key];if(!r||r.type!=='rel')continue;
-    const d=curOf(r,c.cal);if(d==null)continue;
-    for(const e of r.refs||[]){const x=C[e.ref];if(!x)continue;const v=addW(e.base==='start'?x.ps:x.pe,+e.offset||0,c.cal);
+    const d=curOf(r,c.cal,id,key);if(d==null)continue;
+    for(const e of r.refs||[]){const x=C[e.ref];if(!x)continue;if(REV.has(relKey(id,key,e.ref)))continue;const v=addW(e.base==='start'?x.ps:x.pe,+e.offset||0,c.cal);
       if(v===d)go(e.ref,e.base,{fromSide:e.base,to:id,toSide:side,offset:+e.offset||0})}
   }
   return CRIT=out;
@@ -502,11 +551,16 @@ function critPath(){
 const usedKeys=t=>t.anchor==='end'?['endRule']:t.anchor==='both'?['startRule','endRule']:['startRule'];
 function deps(t){const ch=kids[t.id]||[];if(ch.length)return ch.map(c=>c.id);return usedKeys(t).flatMap(k=>{const r=t[k];return r&&r.type==='rel'?(r.refs||[]).map(e=>e.ref):[]})}
 function dependsOn(a,b,seen=new Set()){if(a===b)return true;if(seen.has(a))return false;seen.add(a);const t=byId[a];return!!t&&deps(t).some(x=>dependsOn(x,b,seen))}
-function curOf(r,cal){if(!r)return null;if(r.type!=='rel')return parse(r.date);let out=null;const add=d=>{out=out==null?d:(r.mode==='min'?Math.min(out,d):Math.max(out,d))};
-  for(const e of r.refs||[]){const x=C[e.ref];if(!x)continue;add(addW(e.base==='start'?x.ps:x.pe,+e.offset||0,cal))}const fd=parse(r.date);if(fd!=null)add(fd);return out}
+function curOf(r,cal,hid,key){if(!r)return null;if(r.type!=='rel')return parse(r.date);let out=null;const add=d=>{out=out==null?d:(r.mode==='min'?Math.min(out,d):Math.max(out,d))};
+  for(const e of r.refs||[]){const x=C[e.ref];if(!x)continue;if(hid&&REV.has(relKey(hid,key,e.ref)))continue;add(addW(e.base==='start'?x.ps:x.pe,+e.offset||0,cal))}const fd=parse(r.date);if(fd!=null)add(fd);return out}
 function setRule(t,key,date,cal){const r=t[key];if(r&&r.type==='rel'){const cur=curOf(r,cal);if(cur!=null){const dk=diffW(cur,date,cal);for(const e of r.refs)e.offset=(+e.offset||0)+dk;if(r.date)r.date=iso(addW(parse(r.date),dk,cal));return}}t[key]={type:'fixed',date:iso(date)}}
 function applyPlan(t,ns,ne){
   const cal=calOf(t);if(ne<ns)ne=ns;const d=span(ns,ne,cal);
+  const c0=C[t.id];
+  if(c0&&(c0.pin||c0.back)){
+    if(c0.pin)t.pin=iso(ns);
+    else for(const r of c0.back){const e=(byId[r.h][r.key].refs||[]).find(x=>x.ref===t.id);if(e){const dk=r.base==='end'?diffW(c0.pe,ne,cal):diffW(c0.ps,ns,cal);e.offset=(+e.offset||0)-dk}}
+    if(d!==c0.dur){t.durSrc='fixed';t.dur=d}return}
   if(t.anchor==='end')setRule(t,'endRule',ne,cal);
   else if(t.anchor==='both'){setRule(t,'startRule',ns,cal);setRule(t,'endRule',ne,cal)}
   else setRule(t,'startRule',ns,cal);
@@ -515,6 +569,8 @@ function applyPlan(t,ns,ne){
 }
 function shiftTask(t,delta,sub){
   const cal=calOf(t),c=C[t.id];
+  if(c.pin){t.pin=iso(delta>=0?snapF(c.ps+delta,cal):snapB(c.ps+delta,cal));return}
+  if(c.back){if(sub&&c.back.every(r=>sub.has(r.h)))return;for(const r of c.back){const e=(byId[r.h][r.key].refs||[]).find(x=>x.ref===t.id);if(e){const cur=r.base==='end'?c.pe:c.ps,nd=delta>=0?snapF(cur+delta,cal):snapB(cur+delta,cal);e.offset=(+e.offset||0)-diffW(cur,nd,cal)}}return}
   const keys=t.anchor==='end'?['endRule']:t.anchor==='both'?['startRule','endRule']:['startRule'];
   for(const k of keys){const r=t[k];if(sub&&r&&r.type==='rel'&&r.refs.length&&r.refs.every(e=>sub.has(e.ref)))continue;
     const cur=k==='startRule'?c.ps:c.pe;const nd=delta>=0?snapF(cur+delta,cal):snapB(cur+delta,cal);setRule(t,k,nd,cal)}
@@ -553,22 +609,36 @@ function inheritToChild(P,ch,isNew){
     else for(const k of['startRule','endRule'])if(P[k]&&P[k].type==='rel'&&(!c[k]||c[k].type!=='rel'))c[k]=JSON.parse(JSON.stringify(P[k]));
   }
 }
-function sortSib(a){
-  const v=state.view.sort,ix=id=>IDX.get(id);
-  if(v==='date')a.sort((x,y)=>C[x.id].ps-C[y.id].ps||C[x.id].pe-C[y.id].pe||ix(x.id)-ix(y.id));
-  else if(v==='proc'){const pk=t=>{if(t.proc)return t.proc;const ch=kids[t.id];if(!ch)return'';const l=ch.map(pk).filter(Boolean).sort((a,b)=>a.localeCompare(b,'ja',{numeric:true}));return l[0]||''};
-    a.sort((x,y)=>{const p=pk(x),q=pk(y);if(!p&&q)return 1;if(p&&!q)return-1;return p.localeCompare(q,'ja',{numeric:true})||C[x.id].ps-C[y.id].ps||ix(x.id)-ix(y.id)})}
-  return a;
-}
+function sortSib(a){return a}
 function buildRows(){
   const out=[];FULL=[];WBS={};
   const walk=(p,depth,pre,hid)=>{sortSib((kids[p]||[]).slice()).forEach((t,i)=>{const w=pre?pre+'.'+(i+1):String(i+1);WBS[t.id]=w;FULL.push(t);if(!hid)out.push({t,depth,wbs:w});walk(t.id,depth+1,w,hid||t.collapsed)})};
-  walk('root',0,'',false);
+  const grp=state.view.sort==='proc';
+  walk('root',0,'',grp);
+  if(grp)groupRows(out);
   let y=0;SUBI={};const pos=new Map(FULL.map((t,i)=>[t.id,i]));
   for(const r of out){const t=r.t;r.subs=null;
     if(t.collapsed&&(kids[t.id]||[]).length){const ls=leafIds(t.id);if(ls.length>=2){r.subs=ls.map(id=>byId[id]).sort((a,b)=>pos.get(a.id)-pos.get(b.id));r.subs.forEach((x,j)=>SUBI[x.id]={j,col:SUBC[j%SUBC.length],row:t.id,peers:r.subs.map(y=>y.id)})}}
     r.top=y;r.h=r.subs?MH+r.subs.length*RH:RH;r.lane=r.subs?y+MH+(r.subs.length-1)*RH/2:y;y+=r.h}
   TOTH=y;return out;
+}
+/* 工程区分順：工程区分ごとに見出し（区分の中のタスクをまとめたバー）を置き、区分の中は設計書（入力）の並び。
+   区分は、そのタスクか、いちばん近い親に入っている工程区分。見出しは表示だけの行（id は "grp:区分名"） */
+const GCOL=new Set();
+const grpOf=t=>{let x=t,g=0;while(x&&g++<99){if((x.proc||'').trim())return x.proc.trim();x=x.parent?byId[x.parent]:null}return''};
+function groupRows(out){
+  const leaves=FULL.filter(t=>!(kids[t.id]||[]).length),M=new Map();
+  for(const t of leaves){const k=grpOf(t);if(!M.has(k))M.set(k,[]);M.get(k).push(t)}
+  const keys=[...M.keys()].sort((a,b)=>!a?1:!b?-1:a.localeCompare(b,'ja',{numeric:true}));
+  for(const k of keys){
+    const ts=M.get(k),id='grp:'+k,G={id,name:k||'（工程区分なし）',parent:null,collapsed:GCOL.has(id),grp:true,proc:k},cs=ts.map(t=>C[t.id]).filter(Boolean);
+    let ps=Infinity,pe=-Infinity,as=Infinity,ae=-Infinity,ws=0,pgs=0,anyA=false,allDone=true;
+    for(const x of cs){ps=Math.min(ps,x.ps);pe=Math.max(pe,x.pe);ws+=x.dur;pgs+=x.dur*x.prog;if(x.as!=null){anyA=true;as=Math.min(as,x.as);ae=Math.max(ae,x.aeDraw)}if(x.ae==null)allDone=false}
+    C[id]={parent:true,grp:true,segs:mergeSegs(cs.flatMap(x=>x.segs),false),asegs:mergeSegs(cs.flatMap(x=>x.asegs),false),ps,pe,dur:span(ps,pe,false),prog:ws?pgs/ws:0,as:anyA?as:null,ae:anyA&&allDone?ae:null,aeDraw:anyA?ae:null,cal:false,err:''};
+    WBS[id]='';
+    out.push({t:G,depth:0,wbs:'',grp:true,n:ts.length});
+    if(!G.collapsed)for(const t of ts)out.push({t,depth:1,wbs:WBS[t.id]});
+  }
 }
 function rowAt(y){let lo=0,hi=ROWS.length-1;if(hi<0)return-1;while(lo<hi){const m=(lo+hi+1)>>1;if(ROWS[m].top<=y)lo=m;else hi=m-1}return lo}
 function ruleText(t,key){
@@ -583,10 +653,10 @@ function ruleText(t,key){
 }
 
 /* ---------- 描画：表 ---------- */
-const COLS=[{k:'grip',l:'',w:22},{k:'wbs',l:'No.',w:48},{k:'name',l:'工種・種別・細別',w:220},{k:'spec',l:'規格',w:130},{k:'qty',l:'数量',w:76},{k:'unit',l:'単位',w:48},{k:'daily',l:'日当り<small>施工量</small>',w:76},{k:'parties',l:'班数',w:44},{k:'work',l:'施工<small>日数</small>',w:66},{k:'dur',l:'暦日数',w:62},{k:'ps',l:'開始予定日',w:124},{k:'pe',l:'完了予定日',w:124},{k:'as',l:'開始日<small>実績</small>',w:124},{k:'ae',l:'完了日<small>実績</small>',w:124},{k:'prog',l:'進捗度',w:64},{k:'who',l:'担当者',w:90},{k:'note',l:'備考',w:170}];
+const COLS=[{k:'grip',l:'',w:22},{k:'wbs',l:'No.',w:48},{k:'name',l:'工種・種別・細別',w:220},{k:'proc',l:'工程区分',w:110},{k:'spec',l:'規格',w:130},{k:'qty',l:'数量',w:76},{k:'unit',l:'単位',w:48},{k:'daily',l:'日当り<small>施工量</small>',w:76},{k:'parties',l:'班数',w:44},{k:'work',l:'施工<small>日数</small>',w:66},{k:'dur',l:'暦日数',w:62},{k:'ps',l:'開始予定日',w:124},{k:'pe',l:'完了予定日',w:124},{k:'as',l:'開始日<small>実績</small>',w:124},{k:'ae',l:'完了日<small>実績</small>',w:124},{k:'prog',l:'進捗度',w:64},{k:'who',l:'担当者',w:90},{k:'note',l:'備考',w:170}];
 const lhead=$('#lhead'),lbody=$('#lbody'),lin=$('#lin'),rhead=$('#rhead'),rbody=$('#rbody'),hsvg=$('#hsvg'),csvg=$('#csvg');
 /* 左の表の表示：予定＝予定に関する項目、実施＝実施に関する項目、予定・実施＝すべて */
-const HIDE={both:[],plan:['as','ae','prog'],act:['spec','qty','unit','daily','parties','work','dur','ps','pe']};
+const HIDE={both:['wbs'],plan:['wbs','as','ae','prog'],act:['wbs','spec','qty','unit','daily','parties','work','dur','ps','pe']};
 let COLV=COLS;
 function renderLeft(){
   const hide=new Set(HIDE[state.view.show]||[]);COLV=COLS.filter(c=>!hide.has(c.k));
@@ -602,6 +672,9 @@ function renderLeft(){
 }
 function rowHTML(r){
   if(r.subs)return mrowHTML(r);
+  if(r.grp){const t=r.t,c=C[t.id],v={grip:'<div class="c"></div>',wbs:'<div class="c"></div>',name:`<div class="c name"><button class="tg" data-tg title="折りたたみ">${t.collapsed?'▸':'▾'}</button><b>${esc(t.name)}</b>　<small>${r.n}件</small></div>`,
+      dur:`<div class="c ro num">${c.dur}</div>`,ps:`<div class="c ro">${fmt(c.ps)}</div>`,pe:`<div class="c ro">${fmt(c.pe)}</div>`,as:`<div class="c ro">${fmt(c.as)}</div>`,ae:`<div class="c ro">${c.ae!=null?fmt(c.ae):''}</div>`,prog:`<div class="c ro num">${Math.round(c.prog)}%</div>`};
+    return `<div class="row par grp${t.id===sel?' sel':''}" data-id="${t.id}" title="工程区分「${esc(t.name)}」のタスクをまとめた行">${COLV.map(col=>v[col.k]||'<div class="c"></div>').join('')}</div>`}
   const t=r.t,mine=owns(t.id);
   return `<div class="row${C[t.id].parent?' par':''}${t.id===sel?' sel':''}${mine?(isAdmin()?'':' mine'):' lock'}" data-id="${t.id}"${lockTip(t,mine)}>${cellsHTML(t,r.wbs,r.depth,null)}</div>`;
 }
@@ -609,7 +682,7 @@ const lockTip=(t,mine)=>mine?'':` title="${esc(t.who?`担当：${t.who}（${ME?'
 /* 畳んだ行に子のバーが2本以上：見出し＋子ごとの入力行（番号の色＝チャートのバーの番号の色） */
 function mrowHTML(r){
   const t=r.t,c=C[t.id];
-  return `<div class="mrow" style="height:${r.h}px" data-pid="${t.id}"><div class="mhead${t.id===sel?' sel':''}" data-id="${t.id}"><span class="grip" title="ドラッグで上下に移動">⠿</span><span class="wbs" title="ダブルクリックで詳細設定">${r.wbs}</span><span style="padding-left:${r.depth*16}px"></span><button class="tg" data-tg title="折りたたみ">▸</button><b>${esc(t.name)}</b>　${r.subs.length}本のバー　予定 ${md(c.ps)}〜${md(c.pe)}（${c.dur}日）</div>`+
+  return `<div class="mrow" style="height:${r.h}px" data-pid="${t.id}"><div class="mhead${t.id===sel?' sel':''}" data-id="${t.id}"><span class="grip" title="ドラッグで上下に移動">⠿</span><span style="padding-left:${r.depth*16}px"></span><button class="tg" data-tg title="折りたたみ">▸</button><b>${esc(t.name)}</b>　${r.subs.length}本のバー　予定 ${md(c.ps)}〜${md(c.pe)}（${c.dur}日）</div>`+
     r.subs.map(x=>{const mine=owns(x.id),si=SUBI[x.id];return `<div class="row sub${x.id===sel?' sel':''}${mine?(isAdmin()?'':' mine'):' lock'}" data-id="${x.id}" style="--hc:${si.col}"${lockTip(x,mine)}>${cellsHTML(x,WBS[x.id],r.depth+1,si)}</div>`}).join('')+`</div>`;
 }
 function cellsHTML(t,wbs,depth,si){
@@ -617,11 +690,13 @@ function cellsHTML(t,wbs,depth,si){
   const di=(k,v)=>`<input type="date" data-k="${k}" value="${iso(v)}"${RD}>`;
   const ro=(v,cl='')=>`<div class="c ro ${cl}">${v}</div>`;
   const sRel=!P&&t.anchor!=='end'&&t.startRule?.type==='rel',eRel=!P&&t.anchor!=='start'&&t.endRule?.type==='rel';
-  const sTip=P?'子タスクから自動計算':t.anchor==='end'?'完了日と作業日数から計算':ruleText(t,'startRule');
-  const eTip=P?'子タスクから自動計算':t.anchor==='start'?'開始日と作業日数から計算':ruleText(t,'endRule');
+  const backTip=c.back?'逆算：アンカーにつながる後の工程に合わせて決めています\n'+c.back.map(r=>`・「${nm(r.h)}」の${r.key==='endRule'?'完了日':'開始日'} ${-r.off>=0?'+':''}${-r.off}日 → この${r.base==='end'?'完了日':'開始日'}`).join('\n'):'';
+  const sTip=P?'子タスクから自動計算':c.pin?'アンカー（日程の基準）：この開始日から動きません':c.back?backTip:t.anchor==='end'?'完了日と作業日数から計算':ruleText(t,'startRule');
+  const eTip=P?'子タスクから自動計算':c.back?backTip:t.anchor==='start'?'開始日と作業日数から計算':ruleText(t,'endRule');
   const html=`${si?'<div class="c"></div>':'<div class="c grip" title="ドラッグで上下に移動（行の中央に落とすと子タスクになります）">⠿</div>'}
 <div class="c wbs" title="ダブルクリックで詳細設定">${wbs}</div>
-<div class="c name" style="padding-left:${3+depth*16}px">${si?`<span class="sbd" style="background:${si.col}" title="チャートで同じ色の番号のバー">${si.j+1}</span>`:P?`<button class="tg" data-tg title="折りたたみ">${t.collapsed?'▸':'▾'}</button>`:'<span class="tg0"></span>'}<input data-k="name" value="${esc(t.name)}" placeholder="名称"${RD}>${c.err?`<span class="warn" title="${esc(c.err)}">!</span>`:''}${c.over?`<span class="warn ov" title="${esc(`期限 ${fmt(c.dl)} を ${c.over}日超過しています\n${ruleText(t,'deadline')}`)}">期</span>`:''}</div>
+<div class="c name" style="padding-left:${3+depth*16}px">${si?`<span class="sbd" style="background:${si.col}" title="チャートで同じ色の番号のバー">${si.j+1}</span>`:P?`<button class="tg" data-tg title="折りたたみ">${t.collapsed?'▸':'▾'}</button>`:'<span class="tg0"></span>'}${t.pin&&!P?'<span class="anc" title="アンカー（日程の基準）">⚓</span>':''}<input data-k="name" value="${esc(t.name)}" placeholder="名称"${RD}>${c.err?`<span class="warn" title="${esc(c.err)}">!</span>`:''}${c.over?`<span class="warn ov" title="${esc(`期限 ${fmt(c.dl)} を ${c.over}日超過しています\n${ruleText(t,'deadline')}`)}">期</span>`:''}</div>
+<div class="c"><input data-k="proc" list="dl-proc" value="${esc(t.proc)}"${RD} title="工程区分（並び「工程区分順」でこの区分ごとにまとめます）"></div>
 <div class="c"><input data-k="spec" value="${esc(t.spec)}"${RD}></div>
 <div class="c"><input type="number" min="0" step="any" data-k="qty" value="${esc(t.qty)}"${RD}></div>
 <div class="c"><input data-k="unit" value="${esc(t.unit)}"${RD}></div>
@@ -629,8 +704,8 @@ ${P?ro(''):t.durSrc==='buk'?`<div class="c auto" title="${esc('歩掛ごとの�
 ${P?ro(''):`<div class="c"><input type="number" min="1" data-k="parties" value="${esc(t.parties)}"${RD}></div>`}
 ${P?ro(''):`<div class="c${t.durSrc==='work'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="0" step="any" data-k="work" value="${c.work!=null?f2(c.work):''}"${RD}${c.src==='yield'||c.src==='buk'?' readonly':''}></div>`}
 ${P?ro(c.dur,'num'):`<div class="c${t.durSrc==='fixed'||t.anchor==='both'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="1" data-k="dur" value="${c.dur}"${RD}></div>`}
-${P?ro(fmt(c.ps)):`<div class="c${sRel?' rel':''}" title="${esc(sTip)}">${di('ps',c.ps)}</div>`}
-${P?ro(fmt(c.pe)):`<div class="c${eRel?' rel':''}${c.over?' over':''}" title="${esc(eTip+(c.dl!=null?'\n'+ruleText(t,'deadline')+(c.over?`\n→ ${c.over}日超過`:'\n→ 期限内'):''))}">${di('pe',c.pe)}</div>`}
+${P?ro(fmt(c.ps)):`<div class="c${c.pin?' pin':c.back?' rev':sRel?' rel':''}" title="${esc(sTip)}">${di('ps',c.ps)}</div>`}
+${P?ro(fmt(c.pe)):`<div class="c${c.back?' rev':eRel?' rel':''}${c.over?' over':''}" title="${esc(eTip+(c.dl!=null?'\n'+ruleText(t,'deadline')+(c.over?`\n→ ${c.over}日超過`:'\n→ 期限内'):''))}">${di('pe',c.pe)}</div>`}
 ${P?ro(fmt(c.as)):`<div class="c">${di('as',parse(t.as))}</div>`}
 ${P?ro(c.ae!=null?fmt(c.ae):''):`<div class="c">${di('ae',c.ae)}</div>`}
 ${P?ro(Math.round(c.prog)+'%','num'):`<div class="c"><input type="number" min="0" max="100" step="5" data-k="prog" value="${c.prog}"${RD}></div>`}
@@ -683,7 +758,7 @@ function renderChart(){
     if(k1!=null&&k1>=R.from&&k1<=R.to)lb+=`<line x1="${X(k1)}" x2="${X(k1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k1)+3}" y="${TOTH+16}" class="kkt">工期始 ${md(k1)}</text>`;
     if(k2!=null&&k2>=R.from&&k2<=R.to)lb+=`<line x1="${X(k2+1)}" x2="${X(k2+1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k2+1)-3}" y="${TOTH+16}" class="kkt" text-anchor="end">工期末 ${md(k2)}</text>`}
   if(todayN>=R.from&&todayN<=R.to)bg+=`<rect x="${X(todayN)}" y="0" width="${DW}" height="${H}" class="todayc"/><line x1="${X(todayN)+DW/2}" x2="${X(todayN)+DW/2}" y1="0" y2="${H}" class="todayl"/>`;
-  const tipOf=(t,c)=>esc(`${WBS[t.id]} ${t.name}${t.spec?' '+t.spec:''}${t.qty!==''&&t.qty!=null?`　${t.qty}${t.unit}`:''}\n予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}（暦日 ${c.dur}日）`+(!c.parent&&c.work!=null?`\n${durText(t,c)}`:'')+(c.as!=null?`\n実施 ${fmt(c.as)} 〜 ${c.ae!=null?fmt(c.ae):'作業中'}`:'')+`\n進捗 ${Math.round(c.prog)}%`+(c.dl!=null?`\n期限 ${fmt(c.dl)}${c.over?`（${c.over}日超過）`:'（期限内）'}`:'')+(c.err?'\n⚠ '+c.err:'')+(V.showCrit!==false&&CP.bars.has(t.id)?'\nクリティカルパス上のタスク':''));
+  const tipOf=(t,c)=>esc(`${WBS[t.id]} ${t.name}${t.spec?' '+t.spec:''}${t.qty!==''&&t.qty!=null?`　${t.qty}${t.unit}`:''}\n予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}（暦日 ${c.dur}日）`+(!c.parent&&c.work!=null?`\n${durText(t,c)}`:'')+(c.as!=null?`\n実施 ${fmt(c.as)} 〜 ${c.ae!=null?fmt(c.ae):'作業中'}`:'')+`\n進捗 ${Math.round(c.prog)}%`+(c.dl!=null?`\n期限 ${fmt(c.dl)}${c.over?`（${c.over}日超過）`:'（期限内）'}`:'')+(c.err?'\n⚠ '+c.err:'')+(V.showCrit!==false&&CP.bars.has(t.id)?'\nクリティカルパス上のタスク':'')+(c.pin?'\nアンカー（日程の基準）':c.back?'\n逆算（アンカーにつながる後の工程に合わせて決定）':''));
   const pick=(t,c,top)=>{const x1=X(c.ps),w=X(c.pe+1)-x1;
     if(mode.rel&&mode.last===t.id)fg+=`<rect x="${x1-3}" y="${top+1}" width="${w+6}" height="${HALF-1}" rx="4" class="pick"/>`;
     if(mode.path&&mode.last===t.id){if(V.kind==='plan'||c.as==null)fg+=`<rect x="${x1-3}" y="${top+(V.kind==='plan'?1:HALF)}" width="${w+6}" height="${HALF-1}" rx="4" class="pick"/>`;else fg+=`<rect x="${X(c.as)-3}" y="${top+HALF}" width="${X(c.aeDraw+1)-X(c.as)+6}" height="${HALF-1}" rx="4" class="pick"/>`}};
@@ -696,6 +771,7 @@ function renderChart(){
     if(c.as!=null){const a1=X(c.as),a2=X(c.aeDraw+1),open=c.ae==null;
       fg+=`<g data-part="act" data-lid="${t.id}"${inRow?' data-sub="1"':''}><title>${tip}</title><rect x="${a1}" y="${top+HALF+2}" width="${a2-a1}" height="${HALF-5}" rx="3" fill="${ca}"${open?` fill-opacity=".45" stroke="${ca}" stroke-dasharray="4 2"`:''}/></g>`;
       if(V.lblAct&&!inRow){lb+=`<text x="${a1-4}" y="${top+HALF+13}" class="lb ac" text-anchor="end">${md(c.as)}</text>`;if(!open)lb+=`<text x="${a2+4}" y="${top+HALF+13}" class="lb ac">${md(c.ae)}</text>`}}
+    if(c.pin){fg+=`<rect x="${x1-2.5}" y="${top+0.5}" width="${w+5}" height="${HALF}" rx="4" class="ancb"/>`;lb+=`<text x="${x1-3}" y="${top+HALF-3}" class="anct" text-anchor="end"${V.lblStart&&!inRow?' dx="-30"':''}>⚓</text>`}
     if(V.showCrit!==false&&CP.bars.has(t.id))fg+=`<rect x="${x1-1.5}" y="${top+1.5}" width="${w+3}" height="${HALF-2}" rx="4" class="crb" stroke="${S.colors.crit}"><title>クリティカルパス</title></rect>`;
     const si=inRow&&SUBI[t.id];
     if(si){const same=inRow==='row'?si.peers.filter(o=>SUBI[o].j<si.j&&C[o].ps===c.ps).length:0,bx=(w>=24?x1+9:x1-9)+same*17;lb+=`<g data-lid="${t.id}" data-sub="1"><circle cx="${bx}" cy="${top+HALF/2+1}" r="7.5" fill="${si.col}" stroke="#fff" stroke-width="1.2"/><text x="${bx}" y="${top+HALF/2+4.5}" class="lbin" text-anchor="middle">${si.j+1}</text></g>`}
@@ -710,7 +786,7 @@ function renderChart(){
   ROWS.forEach((r,i)=>{
     const t=r.t,c=C[t.id],top=r.lane,x1=X(c.ps),x2=X(c.pe+1);
     if(!c.parent){leafBar(t,top,false);return}
-    if(t.collapsed){
+    if(t.collapsed&&!t.grp){
       const ls=leafIds(t.id);
       for(const l of ls){const a=C[l],ov=ls.some(o=>o!==l&&C[o].ps<=a.pe&&C[o].pe>=a.ps);leafBar(byId[l],top,ov?'row':'lbl')}
       if(V.lblStart)lb+=`<text x="${x1-4}" y="${top+13}" class="lb" text-anchor="end">${md(c.ps)}</text>`;
@@ -734,7 +810,7 @@ function renderChart(){
     if(L.kind==='plan'?!V.showPlanLinks:!V.showActLinks)continue;
     const ia=rowOf(L.from),ib=rowOf(L.to);if(ia==null||ib==null)continue;
     const a=C[L.from],b=C[L.to];if(!a||!b)continue;let ea,sb,ya,yb;
-    const how=L.kind==='plan'&&L.how?L.how:'es';
+    const LH=L.kind==='plan'?linkHow(L):{how:'es'},how=LH.how;
     if(L.kind==='plan'){ea=how[0]==='s'?a.ps-1:a.pe;sb=how[1]==='e'?b.pe+1:b.ps;ya=LN(ia)+9.5;yb=LN(ib)+9.5}
     else{if(a.as==null||b.as==null)continue;ea=a.aeDraw;sb=b.as;ya=LN(ia)+HALF+8.5;yb=LN(ib)+HALF+8.5}
     const x1=X(ea+1),x2=X(sb),bad=how==='es'&&sb<=ea,hh=6.5,dir=Math.sign(yb-ya);let d;
@@ -746,7 +822,7 @@ function renderChart(){
     if(V.lblWait&&L.note){
       const ly=bad&&dir!==0?(dir>0?TP(ib):BT(ib)):yb,xm=(x1+x2)/2;
       lb+=`<text x="${xm}" y="${ly-4}" class="wn" fill="${col}" text-anchor="middle">${esc(L.note)}</text>`}
-    lk+=`<g class="lk" data-link="${L.id}"><title>${esc((L.kind==='plan'?'予定パス':'実施パス')+'：'+byId[L.from].name+' → '+byId[L.to].name+(bad?'（後続の開始が先行の完了以前）':'')+(L.note?'\nコメント：'+L.note:'')+(mode.path?'\nクリックでコメント・削除':''))}</title><path d="${d}" class="lkh"/><path d="${d}" stroke="${col}" class="lkp${L.kind==='plan'?'':' la'}" marker-end="url(#ar-${bad?'bad':L.kind})"/></g>`;
+    lk+=`<g class="lk" data-link="${L.id}"><title>${esc((L.kind==='plan'?'予定パス':'実施パス')+'：'+byId[L.from].name+' → '+byId[L.to].name+(bad?'（後続の開始が先行の完了以前）':'')+(LH.desc?'\n'+LH.desc:'')+(L.note?'\nコメント：'+L.note:'')+(mode.path?'\nクリックでコメント・削除':''))}</title><path d="${d}" class="lkh"/><path d="${d}" stroke="${col}" class="lkp${L.kind==='plan'?'':' la'}" marker-end="url(#ar-${bad?'bad':L.kind})"/></g>`;
   }
   /* クリティカルパスの線：関連付けの基準どおりの点から点へ（完了→開始、開始→開始、完了→完了、開始→完了） */
   if(V.showCrit!==false)for(const E of CP.edges){
@@ -831,7 +907,7 @@ function redo(){if(RO||!PROJ)return;const e=redoS.pop();if(!e){toast('やり直�
 function toast(m){const e=$('#toast');e.textContent=m;e.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>e.classList.remove('show'),2600)}
 function csvText(){
   const q=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
-  const lines=[['No.','階層','名称','規格','数量','単位','日当り施工量','班数','施工日数','雨休率','雨休日数','暦日数','開始予定日','完了予定日','開始日','完了日','進捗度(%)','担当者','工程','備考'].join(',')];
+  const lines=[['No.','階層','名称','規格','数量','単位','日当り施工量','班数','施工日数','雨休率','雨休日数','暦日数','開始予定日','完了予定日','開始日','完了日','進捗度(%)','担当者','工程区分','備考'].join(',')];
   const depth=t=>{let d=0,p=t.parent;while(p&&d<99){d++;p=byId[p]?.parent}return d};
   for(const t of FULL){const c=C[t.id];lines.push([WBS[t.id],depth(t)+1,t.name,t.spec,t.qty,t.unit,c.parent?'':t.daily,c.parent?'':t.parties,c.parent||c.work==null?'':f2(c.work),c.parent||c.work==null?'':c.rate,c.parent||c.rain==null?'':c.rain,c.dur,fmt(c.ps),fmt(c.pe),fmt(c.as),c.ae!=null?fmt(c.ae):'',Math.round(c.prog),t.who,t.proc,t.note].map(q).join(','))}
   return '﻿'+lines.join('\r\n');
@@ -896,6 +972,8 @@ function editCell(id,k,v){
     case'prog':t.prog=clamp(Math.round(+v||0),0,100);break;
     default:t[k]=v}},true);
 }
+function togglePin(){const t=sel&&byId[sel];if(!t){toast('アンカーにする工程を選んでください');return}if((kids[t.id]||[]).length){toast('アンカーにできるのは末端の工程（子タスクの無い行）だけです');return}if(!owns(t.id))return deny();
+  const on=!t.pin;mutate(()=>{if(on)t.pin=iso(C[t.id].ps);else delete t.pin});toast(on?`「${t.name}」をアンカーにしました。関連付けでつながる工程はこの工程に合わせて決まります`:`「${t.name}」のアンカーを外しました`)}
 function select(id){sel=id;for(const e of lin.querySelectorAll('.row.sel,.mhead.sel'))e.classList.remove('sel');if(id)lin.querySelector(`.row[data-id="${id}"],.mhead[data-id="${id}"]`)?.classList.add('sel');renderChart()}
 function setMode(m){if(m&&RO){deny();return}mode.path=m==='path';mode.rel=m==='rel';mode.last=null;updateUI();renderChart();if(m)toast(m==='rel'?'基準にするタスクのバーをクリックしてください':'バーを順にクリックしてください')}
 function pathClick(t){
@@ -1061,7 +1139,8 @@ ${pb?`<p class="hint">「${esc(nm(b))}」は親タスクのため、入口の子
   const autoMode=()=>{if(modeTouched)return;const cr=byId[bs[0]][keyOf()];cfg.mode=cfg.side==='deadline'?(cr&&cr.mode)||'min':cfg.side==='end'&&cfg.base==='start'?'min':(cr&&cr.type==='rel'?cr.mode||'max':'max');g('mode').value=cfg.mode};
   const draw=()=>{
     const r=analyze(cfg,res),open=r.conflicts.filter(c=>!c.opts.length||res[c.key]==null).length;
-    g('dyn').innerHTML=(r.conflicts.length?`<h3>矛盾の確認（${r.conflicts.length}件${open?`・未解消 ${open}件`:'・すべて解消済み'}）</h3>`:'<h3>矛盾の確認</h3><p class="hint">矛盾はありません。</p>')
+    const SN={start:'開始日',end:'完了日',deadline:'期限'};
+    g('dyn').innerHTML=`<p class="relhd" style="margin-top:10px">「${esc(nm(a))}」の<b>${SN[cfg.base]}</b> ${cfg.off>=0?'+':''}${cfg.off}日 → 「${esc(nm(b))}」の<b>${SN[cfg.side]}</b></p>`+(r.conflicts.length?`<h3>矛盾の確認（${r.conflicts.length}件${open?`・未解消 ${open}件`:'・すべて解消済み'}）</h3>`:'<h3>矛盾の確認</h3><p class="hint">矛盾はありません。</p>')
       +r.conflicts.map(c=>{const ok=c.opts.length&&res[c.key]!=null;return `<div class="cf${ok?' ok':''}"><p><span class="bdg">${ok?'解消済み':'要対応'}</span>${esc(c.msg)}</p>${c.opts.length?c.opts.map(([v,l])=>`<label class="rd"><input type="${c.opts.length>1?'radio':'checkbox'}" name="cf-${esc(c.key)}" data-cf="${esc(c.key)}" value="${v}"${res[c.key]===v?' checked':''}> <span>${esc(l)}</span></label>`).join(''):'<p class="hint">この組み合わせでは関連付けできません。中止するか、別のタスクを選んでください。</p>'}</div>`}).join('')
       +`<div class="pv"><b>関連付け後の見込み</b>${r.preview.length?`<ul>${r.preview.map(p=>cfg.side==='deadline'?`<li>「${esc(nm(p.b))}」期限 ${fmt(p.dl)}　予定完了 ${fmt(p.pe)} → ${p.over?`<b style="color:var(--bad)">${p.over}日超過</b>（はみ出した部分を赤い斜線で表示）`:'期限内'}</li>`:`<li>「${esc(nm(p.b))}」予定 ${fmt(p.ps)} 〜 ${fmt(p.pe)}（${p.dur}日）　変更前 ${fmt(p.ps0)} 〜 ${fmt(p.pe0)}${p.over?`　<b style="color:var(--bad)">期限を${p.over}日超過</b>`:''}</li>`).join('')}${r.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:`<p class="hint" style="margin:4px 0 0">矛盾を解消すると表示されます。</p>${r.notes.length?`<ul>${r.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:''}`}</div>`;
     g('ok').disabled=!r.ok;
@@ -1112,6 +1191,7 @@ function hit(p,tg){
   return res;
 }
 csvg.addEventListener('pointerdown',e=>{
+  {const h0=hit(pt(e),e.target);if(h0&&String(h0.t.id).startsWith('grp:')){if(e.button===0&&!mode.rel&&!mode.path)select(h0.t.id);return}}
   if(e.button!==0)return;const p=pt(e);
   if(mode.rel){const h=hit(p,e.target);if(h)relClick(h.t);return}
   if(mode.path){const lkEl=e.target.closest('[data-link]');if(lkEl){openLink(lkEl.dataset.link);return}
@@ -1186,7 +1266,7 @@ csvg.addEventListener('contextmenu',e=>{if(drag)return;const h=hit(pt(e),e.targe
 lin.addEventListener('change',e=>{const el=e.target,k=el.dataset.k,id=el.closest('.row')?.dataset.id;if(k&&id)editCell(id,k,el.value)});
 lin.addEventListener('focusin',e=>{const id=e.target.closest('.row')?.dataset.id;if(id&&id!==sel)select(id)});
 lin.addEventListener('click',e=>{const row=e.target.closest('.row,.mhead');if(!row)return;const id=row.dataset.id;
-  if(e.target.closest('[data-tg]')){const t=byId[id];t.collapsed=!t.collapsed;saveLocalView();renderAll(true);return}
+  if(e.target.closest('[data-tg]')){if(id.startsWith('grp:')){GCOL.has(id)?GCOL.delete(id):GCOL.add(id);renderAll(true);return}const t=byId[id];t.collapsed=!t.collapsed;saveLocalView();renderAll(true);return}
   if(id!==sel)select(id)});
 lin.addEventListener('dblclick',e=>{if(e.target.closest('.wbs,.grip,.ro')){const id=e.target.closest('.row,.mhead').dataset.id;openDetail(id)}});
 lin.addEventListener('pointerdown',e=>{const g=e.target.closest('.grip');if(!g||e.button!==0)return;const id=g.closest('.row,.mhead').dataset.id;e.preventDefault();
@@ -1236,9 +1316,12 @@ function openDetail(id){
   const lks=state.links.filter(l=>l.from===id||l.to===id);
   const S=state.settings;
   openModal(`<h2>${esc(WBS[id])} タスクの詳細</h2>
-<div class="g2"><label>名称（工種・種別・細別）<input id="d-name" value="${esc(t.name)}"></label><label>担当者<input id="d-who" list="dl-who" value="${esc(t.who)}"></label><label>工程<input id="d-proc" list="dl-proc" value="${esc(t.proc)}"></label><label>備考<input id="d-note" value="${esc(t.note)}"></label></div>
+<div class="g2"><label>名称（工種・種別・細別）<input id="d-name" value="${esc(t.name)}"></label><label>担当者<input id="d-who" list="dl-who" value="${esc(t.who)}"></label><label>工程区分<input id="d-proc" list="dl-proc" value="${esc(t.proc)}"></label><label>備考<input id="d-note" value="${esc(t.note)}"></label></div>
 <div class="g2" style="margin-top:8px"><label>規格<input id="d-spec" value="${esc(t.spec)}"></label><label>数量<input id="d-qty" type="number" step="any" min="0" value="${esc(t.qty)}"></label><label>単位<input id="d-unit" value="${esc(t.unit)}"></label></div>
 ${P?`<p class="hint">親タスクの日付・日数・進捗度は子タスクから自動で集計されます（予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}、${c.dur}日、${Math.round(c.prog)}%）。</p>`:`
+<h3>アンカー</h3>
+<div class="rr"><label><input type="checkbox" id="d-pin"${t.pin?' checked':''}> この工程をアンカー（日程の基準）にする　開始日</label><input class="fld" type="date" id="d-pin-d" value="${iso(parse(t.pin)??c.ps)}"${t.pin?'':' disabled'}></div>
+<p class="hint">アンカーにした工程は、この開始日から動きません。関連付けでつながった工程は、アンカーより前の工程は逆算、後の工程は順算で、アンカーに合わせて決まります。下の「開始日の決め方」などは、アンカーを外したときに使います。</p>
 <h3>工程の拘束</h3>
 <div class="rr"><label><input type="radio" name="anc" value="start"${t.anchor==='start'?' checked':''}> 開始日で拘束（完了日＝開始日＋暦日数）</label></div>
 <div class="rr"><label><input type="radio" name="anc" value="end"${t.anchor==='end'?' checked':''}> 完了日で拘束（開始日＝完了日−暦日数）</label></div>
@@ -1285,7 +1368,7 @@ ${lks.length?`<ul class="lst">${lks.map(l=>`<li><span>${l.kind==='plan'?'予定'
       g('qty').addEventListener('input',redraw);
     }
     const box=$('#mbox');
-    box.onchange=e=>{const el=e.target;const m=/^d-([sed])-date$/.exec(el.id);if(m){$('#d-'+m[1]+'-ud').checked=!!el.value;return}if(!el.dataset.pre)return;const it=work[el.dataset.pre][+el.dataset.i];if(it)it[el.dataset.f]=el.dataset.f==='offset'?Math.round(+el.value||0):el.value};
+    box.onchange=e=>{const el=e.target;if(el.id==='d-pin'){$('#d-pin-d').disabled=!el.checked;return}const m=/^d-([sed])-date$/.exec(el.id);if(m){$('#d-'+m[1]+'-ud').checked=!!el.value;return}if(!el.dataset.pre)return;const it=work[el.dataset.pre][+el.dataset.i];if(it)it[el.dataset.f]=el.dataset.f==='offset'?Math.round(+el.value||0):el.value};
     box.onclick=e=>{const ad=e.target.closest('[data-add]'),rm=e.target.closest('[data-rm]');if(!ad&&!rm)return;e.preventDefault();
       if(ad){const pre=ad.dataset.add;work[pre].push({ref:opts[0]?.id||'',base:pre==='d'?'start':'end',offset:pre==='e'?Math.max(1,c.dur):pre==='d'?-1:1});$('#d-'+pre+'-ur').checked=true;$('#d-'+pre+'-refs').innerHTML=rowsHTML(pre)}
       else{const[pre,i]=rm.dataset.rm.split(':');work[pre].splice(+i,1);$('#d-'+pre+'-refs').innerHTML=rowsHTML(pre)}};}
@@ -1306,14 +1389,15 @@ ${lks.length?`<ul class="lst">${lks.map(l=>`<li><span>${l.kind==='plan'?'予定'
         if(!refs.length&&!date)return null;
         if(!refs.length)return pre==='d'?{type:'rel',mode:'min',refs:[],date}:{type:'fixed',date};
         return Object.assign({type:'rel',mode:g(pre+'-mode').value,refs},date?{date}:{})};
+      const pin=!!(g('pin')&&g('pin').checked),pinD=g('pin-d')&&g('pin-d').value;
       sR=mk('s');eR=mk('e');dR=mk('d');
       const need=anc==='start'?[['s',sR]]:anc==='end'?[['e',eR]]:[['s',sR],['e',eR]];
-      for(const[k,r]of need){if(!r){g('msg').textContent=`${k==='s'?'開始日':'完了日'}の決め方（日付または関連タスク）を指定してください`;return}
+      for(const[k,r]of pin?[]:need){if(!r){g('msg').textContent=`${k==='s'?'開始日':'完了日'}の決め方（日付または関連タスク）を指定してください`;return}
         if(r.type==='rel'){const bad=r.refs.find(e=>e.ref===id||dependsOn(e.ref,id));if(bad){g('msg').textContent=`「${nm(bad.ref)}」はこのタスクの日程に依存しているため、基準にすると循環参照になります`;return}}}
       if(!sR)sR=t.startRule&&t.startRule.type?t.startRule:{type:'fixed',date:iso(c.ps)};
       if(!eR)eR=t.endRule&&t.endRule.type&&(t.endRule.date||t.endRule.refs)?t.endRule:{type:'fixed',date:iso(c.pe)};}
     mutate(()=>{t.name=g('name').value;t.spec=g('spec').value;t.qty=g('qty').value===''?'':+g('qty').value;t.unit=g('unit').value;if(isAdmin())t.who=g('who').value;t.proc=g('proc').value;t.note=g('note').value;
-      if(!P){t.anchor=anc;t.startRule=sR;t.endRule=eR;t.deadline=dR;t.durSrc=dsrc();t.buk=bk;t.daily=g('daily').value===''?'':+g('daily').value;if(+g('work').value>0)t.work=Math.round(+g('work').value*100)/100;t.parties=Math.max(1,Math.round(+g('pt').value||1));t.rainRate=g('rate').value===''?'':+g('rate').value;if(anc!=='both'&&t.durSrc==='fixed')t.dur=Math.max(1,Math.round(+g('dur').value||1));t.restricted=g('rst').checked;t.as=g('as').value;t.ae=t.as?g('ae').value:'';t.prog=clamp(Math.round(+g('prog').value||0),0,100)}
+      if(!P){t.anchor=anc;t.startRule=sR;if(pin)t.pin=pinD||iso(c.ps);else delete t.pin;t.endRule=eR;t.deadline=dR;t.durSrc=dsrc();t.buk=bk;t.daily=g('daily').value===''?'':+g('daily').value;if(+g('work').value>0)t.work=Math.round(+g('work').value*100)/100;t.parties=Math.max(1,Math.round(+g('pt').value||1));t.rainRate=g('rate').value===''?'':+g('rate').value;if(anc!=='both'&&t.durSrc==='fixed')t.dur=Math.max(1,Math.round(+g('dur').value||1));t.restricted=g('rst').checked;t.as=g('as').value;t.ae=t.as?g('ae').value:'';t.prog=clamp(Math.round(+g('prog').value||0),0,100)}
       t.cPlan=g('cpdef').checked?'':g('cp').value;t.cAct=g('cadef').checked?'':g('ca').value});
     closeModal();
   };
@@ -1593,6 +1677,7 @@ function openIO(){
 const on=(id,ev,fn)=>$(id).addEventListener(ev,fn);
 on('#b-add','click',()=>addTask(false));on('#b-child','click',()=>addTask(true));on('#b-del','click',delTask);
 on('#b-in','click',indent);on('#b-out','click',outdent);on('#b-up','click',()=>moveSib(-1));on('#b-down','click',()=>moveSib(1));
+on('#b-pin','click',togglePin);
 on('#b-detail','click',()=>sel?openDetail(sel):toast('タスクを選んでください'));
 on('#b-undo','click',undo);on('#b-redo','click',redo);on('#b-save','click',saveProject);on('#b-users','click',openUsers);
 on('#b-proj','click',async()=>{if(await confirmLeave())screenProjects()});
@@ -1705,7 +1790,7 @@ function canon(o){const f=fill(o);return{title:f.title,settings:f.settings,tasks
 function loadData(obj){
   const col=state&&state.__file===(PROJ&&PROJ.file)?new Set(state.tasks.filter(t=>t.collapsed).map(t=>t.id)):loadCol();
   const view=state&&state.view?state.view:null,f=fill(obj);
-  state=f;state.__file=PROJ&&PROJ.file;state.view=view||Object.assign(f.view,loadLocalView());
+  state=f;state.__file=PROJ&&PROJ.file;state.view=view||Object.assign(f.view,loadLocalView());if(state.view.sort==='date')state.view.sort='input';
   state.history=obj.history||[];state.version=obj.version||0;state.savedAt=obj.savedAt||0;state.savedBy=obj.savedBy||'';
   for(const t of state.tasks)t.collapsed=col.has(t.id);
   recompute();
