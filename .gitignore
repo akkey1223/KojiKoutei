@@ -1,0 +1,7 @@
+# 積算基準書などの元PDFは入れない（容量・配布の扱いのため）
+*.pdf
+*.PDF
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db

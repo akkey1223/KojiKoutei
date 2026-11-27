@@ -1,0 +1,1748 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工事工程表</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E %3Crect x='0.5' y='0.5' width='63' height='63' rx='12' fill='%23FFFFFF' stroke='%23DFE3E8' stroke-width='1' /%3E %3Crect x='9' y='12' width='22' height='5.5' rx='2' fill='%232563C9' /%3E %3Crect x='9' y='19' width='24' height='5.5' rx='2' fill='%23EF7D1A' /%3E %3Crect x='19' y='29' width='24' height='5.5' rx='2' fill='%232563C9' /%3E %3Crect x='21' y='36' width='20' height='5.5' rx='2' fill='%23EF7D1A' /%3E %3Crect x='31' y='46' width='24' height='5.5' rx='2' fill='%232563C9' /%3E %3Crect x='31' y='53' width='16' height='5.5' rx='2' fill='%23EF7D1A' /%3E %3Cline x1='33' y1='8' x2='33' y2='59' stroke='%23D62828' stroke-width='2' stroke-linecap='round' /%3E %3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE 業務ツール。現場事務所の壁に貼る工程表のように、正確で落ち着いた見た目
+   IDEA  バーチャート工程表：1行を上下に割り、上段＝予定、下段＝実施
+   PICTURE 予定（藍）と実施（橙）の二段バー、休日の網掛け、パスの矢印
+   COLOUR 白地／墨、予定 #2563c9、実施 #ef7d1a、休日は淡い灰、本日は朱
+   TYPE  BIZ UDPGothic（行政文書で読みやすい書体）
+   LAYOUT 上にツールバー、左に表、右にチャート。境界はドラッグで調整 */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#111419);--ink:light-dark(#1b1f24,#e4e7eb);--mut:light-dark(#6a727c,#9aa3ad);--line:light-dark(#dfe3e8,#2b3139);--line2:light-dark(#eef1f4,#1e232a);--hol:light-dark(#eff1f4,#1a1f26);--panel:light-dark(#f6f7f9,#171b21);--sel:light-dark(#e6effd,#1c2a40);--field:light-dark(#ffffff,#161a20);--acc:#2563c9;--bad:#d62828;--sun:light-dark(#c62828,#ff7b7b);--sat:light-dark(#1f5fbf,#7fb0ff)}
+:root[data-theme=light]{color-scheme:light}
+:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "BIZ UDPGothic","Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;display:flex;flex-direction:column;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+header{border-bottom:1px solid var(--line);background:var(--panel);padding:8px 12px 6px}
+.t1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.t1 h1{font-size:18px;margin:0;letter-spacing:-.01em;white-space:nowrap}
+#ptitle{font-size:15px;border:1px solid transparent;background:transparent;padding:4px 6px;border-radius:4px;width:min(360px,50vw)}
+#ptitle:hover,#ptitle:focus{border-color:var(--line);background:var(--field)}
+.sp{flex:1}
+#savest{font-size:12px;color:var(--mut);white-space:nowrap}
+#savest.dirty{color:#b45309}
+.tb{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-top:6px}
+.grp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.grp>span.gl{font-size:12px;color:var(--mut);margin-right:2px}
+.btn{height:32px;padding:0 10px;border:1px solid var(--line);background:var(--field);border-radius:5px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--acc)}
+.btn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.on{background:#b4261b;border-color:#b4261b;color:#fff}
+.btn.danger{color:var(--bad)}
+.btn:disabled{opacity:.45;cursor:default}
+select.btn{padding:0 6px}
+.chk{display:inline-flex;align-items:center;gap:3px;font-size:13px;white-space:nowrap;cursor:pointer}
+#zoom{width:110px}
+main{flex:1;display:flex;min-height:0;position:relative}
+#left{display:flex;flex-direction:column;overflow-x:auto;overflow-y:hidden;flex:none;width:640px;max-width:80vw}
+#lhead{display:grid;grid-template-columns:var(--gt);height:52px;border-bottom:1px solid var(--line);background:var(--panel);flex:none;position:relative}
+#lhead .h{display:flex;align-items:flex-end;padding:0 6px 6px;font-size:12px;color:var(--mut);border-right:1px solid var(--line2);white-space:nowrap;font-weight:700}
+#lhead .h small{font-weight:400;margin-left:2px}
+#lbody{flex:1;overflow:hidden;position:relative}
+#lin{position:relative}
+.row{display:grid;grid-template-columns:var(--gt);height:36px;border-bottom:1px solid var(--line2);align-items:stretch}
+.row.sel{background:var(--sel)}
+.row.par input[data-k=name]{font-weight:700}
+.c{display:flex;align-items:center;border-right:1px solid var(--line2);padding:0 3px;font-size:13px;overflow:hidden;white-space:nowrap}
+.c input{width:100%;height:28px;border:1px solid transparent;background:transparent;border-radius:3px;padding:0 4px;font-size:13px}
+.c input:hover{border-color:var(--line)}
+.c input:focus{border-color:var(--acc);background:var(--field);outline:none}
+.c input[type=number]{text-align:right}
+.c input[type=date]{padding:0 2px;font-variant-numeric:tabular-nums}
+.c.ro{color:var(--mut);padding-left:7px;font-variant-numeric:tabular-nums}
+.c.num{justify-content:flex-end;padding-right:8px}
+.c.rel input{color:var(--acc);font-weight:700}
+.c.rel{box-shadow:inset 3px 0 0 var(--acc)}
+.grip{cursor:grab;color:var(--mut);justify-content:center;user-select:none;touch-action:none}
+.wbs{color:var(--mut);font-size:12px;font-variant-numeric:tabular-nums;cursor:pointer}
+.name{gap:2px}
+.tg{width:18px;height:22px;border:0;background:none;cursor:pointer;padding:0;color:var(--mut);flex:none}
+.tg0{width:18px;flex:none}
+.warn{flex:none;width:16px;height:16px;border-radius:50%;background:var(--bad);color:#fff;font-size:11px;display:grid;place-items:center;font-weight:700}
+#dropind{position:absolute;left:0;right:0;display:none;pointer-events:none;z-index:3}
+#dropind.line{height:0;border-top:3px solid var(--acc)}
+#dropind.box{border:2px dashed var(--acc);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+#split{width:6px;flex:none;cursor:col-resize;background:var(--line);touch-action:none}
+#split:hover{background:var(--acc)}
+#right{flex:1;display:flex;flex-direction:column;min-width:0}
+#rhead{height:52px;overflow:hidden;flex:none;border-bottom:1px solid var(--line);background:var(--panel)}
+#rbody{flex:1;overflow:auto;position:relative}
+#csvg{display:block;user-select:none;touch-action:none}
+svg text{font-family:inherit}
+.mh{fill:none;stroke:var(--line)}
+.mt{font-size:12px;font-weight:700;fill:var(--ink)}
+.hd{font-size:11px;fill:var(--ink)}
+.hd.sat{fill:var(--sat)}.hd.sun{fill:var(--sun)}
+.hhol{fill:var(--hol)}
+.gl{stroke:var(--line2)}.gl2{stroke:var(--line)}
+.hol{fill:var(--hol)}
+.rst{fill:light-dark(#fcd5b4,#4a3220);opacity:.75}
+.hrst{fill:light-dark(#fcd5b4,#4a3220)}
+.kki{stroke:#d62828;stroke-width:1.5;stroke-dasharray:6 3}
+.kkt{font-size:11px;font-weight:700;fill:#d62828;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
+.c.auto input{color:var(--mut)}
+.c.calc{color:var(--ink)}
+.buk{font-size:12px}.buk td{border-top:1px solid var(--line2);padding:3px 4px;vertical-align:top}
+.rl{stroke:var(--line2)}
+.ml{stroke:var(--line2);stroke-dasharray:2 3}
+.selr{fill:var(--sel)}
+.todayc{fill:#d62828;opacity:.07}
+.todayl{stroke:#d62828;stroke-width:1.5}
+.todayh{fill:#d62828;opacity:.18}
+.hb{fill:var(--bg);opacity:.55;pointer-events:none}
+.pg{fill:#000;opacity:.28;pointer-events:none}
+.err rect.pb{stroke:var(--bad);stroke-width:2;stroke-dasharray:3 2}
+.lb{font-size:11px;fill:var(--ink);paint-order:stroke;stroke:var(--bg);stroke-width:3px;pointer-events:none}
+.lb.nm{font-weight:700}
+.wn{font-size:11px;font-weight:700;paint-order:stroke;stroke:var(--bg);stroke-width:4px;pointer-events:none}
+.rlp{fill:none;stroke:#8a929c;stroke-width:1.5;stroke-dasharray:5 3;pointer-events:none}
+#relinfo{display:none;position:absolute;right:16px;bottom:14px;z-index:5;max-width:min(460px,70%);background:var(--bg);border:1px dashed #8a929c;border-radius:6px;padding:8px 12px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);pointer-events:none}
+#relinfo ul{margin:4px 0;padding-left:16px}
+#relinfo small{color:var(--mut)}
+.relbox{fill:none;stroke:#8a929c;stroke-width:1.2;stroke-dasharray:3 2;pointer-events:none}
+.ovl{fill:none;stroke:#d62828;stroke-width:1.5;stroke-dasharray:4 2;pointer-events:none}
+.dlm line{stroke:#d62828;stroke-width:2}
+.dlm path{fill:#d62828}
+.lb.ovt{fill:#d62828;font-weight:700}
+.warn.ov{background:#b45309;width:auto;padding:0 3px;border-radius:3px}
+.c.over input{color:#d62828;font-weight:700}
+.lbin{font-size:10px;font-weight:700;fill:#fff;pointer-events:none}
+.sepl{fill:none;stroke:var(--bg);stroke-width:1.5;pointer-events:none}
+.olv{min-width:32px;padding:0 8px}
+.olv.cur{border-color:var(--acc);color:var(--acc);font-weight:700}
+.lb.ac{fill:light-dark(#9a4a07,#ffb36b)}
+.lkp{fill:none;stroke-width:1.5;pointer-events:none}
+.la{stroke-dasharray:5 3}
+.lkh{fill:none;stroke:transparent;stroke-width:10;pointer-events:none}
+.pathmode .lkh{pointer-events:stroke;cursor:pointer}
+.pathmode .lk:hover .lkp{stroke:var(--bad);stroke-width:3}
+.pick{fill:none;stroke:var(--bad);stroke-width:2;stroke-dasharray:4 2;pointer-events:none}
+#tip{position:fixed;z-index:20;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;padding:5px 8px;border-radius:4px;display:none;white-space:nowrap}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:6px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30;max-width:90vw}
+#toast.show{opacity:1}
+#pathbar{display:none;position:absolute;top:8px;right:16px;z-index:5;background:#b4261b;color:#fff;font-size:12px;padding:5px 10px;border-radius:4px}
+.pathmode #pathbar,.relmode #pathbar{display:block}
+.relmode #pathbar{background:#1d4ed8}
+.cf{border:1px solid var(--bad);border-radius:6px;padding:8px 10px;margin:8px 0;background:color-mix(in srgb,var(--bad) 6%,transparent)}
+.cf.ok{border-color:#2f855a;background:color-mix(in srgb,#2f855a 7%,transparent)}
+.cf p{margin:0 0 4px;font-size:13px}
+.bdg{display:inline-block;font-size:11px;padding:1px 6px;border-radius:3px;margin-right:6px;color:#fff;background:var(--bad);white-space:nowrap}
+.cf.ok .bdg{background:#2f855a}
+.cf .rd{display:flex;gap:6px;align-items:flex-start;margin:4px 0 0 4px;font-size:13px;cursor:pointer}
+.pv{background:var(--panel);border-radius:6px;padding:8px 12px;margin-top:10px;font-size:13px}
+.pv ul{margin:4px 0 0;padding-left:18px}
+.relhd{font-size:15px;margin:0 0 10px}
+#modal{position:fixed;inset:0;background:rgba(10,14,20,.45);display:none;align-items:flex-start;justify-content:center;z-index:40;overflow:auto;padding:30px 12px}
+#modal.open{display:flex}
+#mbox{background:var(--bg);border-radius:8px;width:min(760px,100%);padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+#mbox h2{font-size:20px;margin:0 0 12px}
+#mbox h3{font-size:14px;margin:16px 0 6px}
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 14px}
+.g2 label,.fl{display:flex;flex-direction:column;font-size:12px;color:var(--mut);gap:3px}
+.g2 input,.g2 select,#mbox textarea,.fld{height:34px;border:1px solid var(--line);border-radius:4px;padding:0 8px;background:var(--field);font-size:14px;color:var(--ink)}
+fieldset{border:1px solid var(--line);border-radius:6px;margin:12px 0 0;padding:8px 12px 10px}
+fieldset.off{opacity:.45}
+legend{font-weight:700;font-size:13px;padding:0 4px}
+.rr{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0}
+.rr label{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.rr .fld{height:32px}
+.hint{font-size:12px;color:var(--mut);margin:4px 0 0}
+.mf{display:flex;gap:8px;margin-top:18px;align-items:center;flex-wrap:wrap}
+.msg{color:var(--bad);font-size:13px;min-height:1em;margin:8px 0 0}
+.lst{list-style:none;padding:0;margin:0}
+.lst li{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line2);font-size:13px}
+.lst li span{flex:1}
+table.pt{border-collapse:collapse;width:100%}
+table.pt td{padding:3px 4px}
+table.pt input{width:100%}
+#mbox textarea{width:100%;height:160px;padding:8px;font:12px/1.4 ui-monospace,Consolas,monospace}
+.hl{columns:2;font-size:12px;color:var(--mut);margin:6px 0 0;padding-left:16px}
+body.dragging,body.dragging *{cursor:grabbing!important}
+.sample{font-size:12px;color:var(--mut)}
+.ttl{display:flex;align-items:center;gap:8px}
+.appicon{width:26px;height:26px;flex:none}
+#gbox .appicon{width:32px;height:32px}
+body.ro .ed{display:none!important}
+body:not(.admin) .adm{display:none!important}
+.whob{font-size:12px;padding:3px 8px;border-radius:12px;background:var(--panel);border:1px solid var(--line);white-space:nowrap}
+.whob.adm-b{border-color:var(--acc);color:var(--acc)}
+#gate{position:fixed;inset:0;background:var(--panel);display:none;z-index:45;overflow:auto;padding:48px 16px}
+#gate.open{display:block}
+#gbox{max-width:640px;margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:24px 28px}
+#gbox h1.gh{font-size:24px;margin:0 0 6px}
+#gbox h2{font-size:18px;margin:18px 0 10px}
+#gbox .g2 label{display:flex;flex-direction:column;font-size:12px;color:var(--mut);gap:3px}
+#gbox .g2 input,#gbox .g2 select{height:36px;border:1px solid var(--line);border-radius:4px;padding:0 8px;background:var(--field);font-size:15px;color:var(--ink)}
+.plist li{padding:8px 0}
+.newloc{font-size:16px;font-weight:700;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:6px;word-break:break-all;margin:8px 0}
+#gbox .g2 label{min-width:0}
+.row.lock .c input{color:var(--mut)}
+.row.mine{box-shadow:inset 3px 0 0 #2f855a}
+table.ut th{text-align:left;font-size:12px;color:var(--mut);font-weight:400;padding:4px}
+table.ut td{border-top:1px solid var(--line2)}
+@media(max-width:700px){#left{width:300px}.t1 h1{font-size:16px}#zoom{width:80px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="t1">
+    <h1 class="ttl"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E %3Crect x='0.5' y='0.5' width='63' height='63' rx='12' fill='%23FFFFFF' stroke='%23DFE3E8' stroke-width='1' /%3E %3Crect x='9' y='12' width='22' height='5.5' rx='2' fill='%232563C9' /%3E %3Crect x='9' y='19' width='24' height='5.5' rx='2' fill='%23EF7D1A' /%3E %3Crect x='19' y='29' width='24' height='5.5' rx='2' fill='%232563C9' /%3E %3Crect x='21' y='36' width='20' height='5.5' rx='2' fill='%23EF7D1A' /%3E %3Crect x='31' y='46' width='24' height='5.5' rx='2' fill='%232563C9' /%3E %3Crect x='31' y='53' width='16' height='5.5' rx='2' fill='%23EF7D1A' /%3E %3Cline x1='33' y1='8' x2='33' y2='59' stroke='%23D62828' stroke-width='2' stroke-linecap='round' /%3E %3C/svg%3E" alt="" class="appicon">工事工程表</h1>
+    <input id="ptitle" aria-label="工事名" placeholder="工事名">
+    <span class="sample" id="projinfo"></span>
+    <span class="sp"></span>
+    <span id="savest"></span>
+    <button class="btn ed" id="b-undo" title="編集を元に戻す (Ctrl+Z)">元に戻す</button>
+    <button class="btn ed" id="b-redo" title="元に戻した編集をやり直す (Ctrl+Y)">やり直し</button>
+    <button class="btn" id="b-io">書き出し・読み込み</button>
+    <button class="btn" id="b-koji">工事情報</button>
+    <button class="btn adm" id="b-set">作業不能期間・色</button>
+    <button class="btn adm" id="b-users">利用者管理</button>
+    <button class="btn pri ed" id="b-save" title="Ctrl+S">保存</button>
+    <span id="whob" class="whob"></span>
+    <button class="btn" id="b-proj" title="工事の一覧・切り替え">工事一覧</button>
+    <button class="btn" id="b-me">ログアウト</button>
+  </div>
+  <div class="tb">
+    <div class="grp ed"><span class="gl">タスク</span>
+      <button class="btn" id="b-add">＋追加</button>
+      <button class="btn" id="b-child">＋子タスク</button>
+      <button class="btn" id="b-out" title="階層を上げる">← 上の階層へ</button>
+      <button class="btn" id="b-in" title="直前のタスクの子にする">下の階層へ →</button>
+      <button class="btn" id="b-up" title="上へ">↑</button>
+      <button class="btn" id="b-down" title="下へ">↓</button>
+      <button class="btn" id="b-detail">詳細設定</button>
+      <button class="btn danger" id="b-del">削除</button>
+    </div>
+    <div class="grp"><span class="gl">アウトライン</span><span id="olv" class="grp"></span><button class="btn" id="b-expand" title="すべての階層を開く">すべて展開</button></div>
+    <div class="grp"><span class="gl">並び</span>
+      <select class="btn" id="v-sort"><option value="input">入力順</option><option value="date">工程順（開始予定日）</option><option value="proc">工程区分順</option></select>
+    </div>
+    <div class="grp ed"><span class="gl">クリック操作</span>
+      <button class="btn" id="b-rel" title="バーを押した順に工程を関連付けます（先行 → 後続）">関連付けモード</button>
+      <button class="btn" id="b-path" title="バーを押した順にパスを引きます">パス設定モード</button>
+      <select class="btn" id="v-kind" title="作成するパスの種類"><option value="plan">予定パスを引く</option><option value="actual">実施パスを引く</option></select>
+    </div>
+    <div class="grp"><span class="gl">表示</span>
+      <label class="chk"><input type="checkbox" id="v-lp"> 予定パス</label>
+      <label class="chk"><input type="checkbox" id="v-la"> 実施パス</label>
+      <label class="chk"><input type="checkbox" id="v-ln"> タスク名</label>
+      <label class="chk"><input type="checkbox" id="v-ls"> 開始日</label>
+      <label class="chk"><input type="checkbox" id="v-le"> 完了日</label>
+      <label class="chk"><input type="checkbox" id="v-lact"> 実施の日付</label>
+      <label class="chk"><input type="checkbox" id="v-lw"> パスのコメント</label>
+    </div>
+    <div class="grp"><span class="gl">拡大</span><input type="range" id="zoom" min="6" max="48" step="1"><button class="btn" id="b-today">今日へ</button></div>
+  </div>
+</header>
+<main id="main">
+  <div id="left"><div id="lhead"></div><div id="lbody"><div id="lin"></div><div id="dropind"></div></div></div>
+  <div id="split" title="ドラッグで幅を変更"></div>
+  <div id="right"><div id="rhead"><svg id="hsvg"></svg></div><div id="rbody"><svg id="csvg"></svg></div><div id="pathbar"></div><div id="relinfo"></div></div>
+</main>
+<div id="gate"><div id="gbox"></div></div>
+<div id="tip"></div>
+<div id="toast"></div>
+<div id="modal"><div id="mbox"></div></div>
+<datalist id="dl-who"></datalist><datalist id="dl-proc"></datalist>
+<script>
+{
+const SELF='<!DOCTYPE html>\n'+document.documentElement.outerHTML;
+const RH=36,HALF=18;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DAY=86400000;
+const dn=(y,m,d)=>Math.round(Date.UTC(y,m-1,d)/DAY);
+const parse=s=>{if(!s)return null;const m=/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/.exec(s);return m?dn(+m[1],+m[2],+m[3]):null};
+const ymd=n=>{const d=new Date(n*DAY);return[d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate()]};
+const p2=v=>String(v).padStart(2,'0');
+const iso=n=>{if(n==null||!isFinite(n))return'';const[y,m,d]=ymd(n);return y+'-'+p2(m)+'-'+p2(d)};
+const fmt=n=>{if(n==null||!isFinite(n))return'';const[y,m,d]=ymd(n);return y+'/'+p2(m)+'/'+p2(d)};
+const md=n=>{const[,m,d]=ymd(n);return m+'/'+d};
+const dow=n=>((n+4)%7+7)%7;
+const WD='日月火水木金土';
+const todayN=(()=>{const t=new Date();return dn(t.getFullYear(),t.getMonth()+1,t.getDate())})();
+const uid=()=>'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* ---------- 祝日 ---------- */
+const jpCache={};
+function nthMon(y,m,n){const f=dn(y,m,1);return f+((1-dow(f)+7)%7)+(n-1)*7}
+function jpHolidays(y){
+  if(jpCache[y])return jpCache[y];
+  const h=new Map(),add=(n,s)=>h.set(n,s),k=y-1980;
+  add(dn(y,1,1),'元日');add(nthMon(y,1,2),'成人の日');add(dn(y,2,11),'建国記念の日');
+  if(y>=2020)add(dn(y,2,23),'天皇誕生日');
+  add(dn(y,3,Math.floor(20.8431+0.242194*k-Math.floor(k/4))),'春分の日');
+  add(dn(y,4,29),'昭和の日');add(dn(y,5,3),'憲法記念日');add(dn(y,5,4),'みどりの日');add(dn(y,5,5),'こどもの日');
+  if(y===2020){add(dn(y,7,23),'海の日');add(dn(y,7,24),'スポーツの日');add(dn(y,8,10),'山の日')}
+  else if(y===2021){add(dn(y,7,22),'海の日');add(dn(y,7,23),'スポーツの日');add(dn(y,8,8),'山の日')}
+  else{add(nthMon(y,7,3),'海の日');add(dn(y,8,11),'山の日');add(nthMon(y,10,2),'スポーツの日')}
+  add(nthMon(y,9,3),'敬老の日');
+  add(dn(y,9,Math.floor(23.2488+0.242194*k-Math.floor(k/4))),'秋分の日');
+  add(dn(y,11,3),'文化の日');add(dn(y,11,23),'勤労感謝の日');
+  const ks=[...h.keys()].sort((a,b)=>a-b);
+  for(let i=0;i<ks.length-1;i++)if(ks[i+1]-ks[i]===2){const m=ks[i]+1;if(dow(m)!==0&&!h.has(m))h.set(m,'国民の休日')}
+  for(const n of [...h.keys()].sort((a,b)=>a-b))if(dow(n)===0){let s=n+1;while(h.has(s))s++;h.set(s,'振替休日')}
+  return jpCache[y]=h;
+}
+
+/* ---------- 状態 ---------- */
+let state,undoS=[],redoS=[],C={},byId={},kids={},IDX=new Map(),ROWS=[],FULL=[],WBS={},R=null,sel=null,dirty=false,DW=22;
+const mode={path:false,rel:false,last:null};
+let drag=null,rdrag=null,sdrag=null,modalOpen=false;
+const offCache=new Map();
+/* 作業不能期間（例：河川の出水期）。日数の計算で飛ばすのは「作業不能期間の対象」のタスクだけ。
+   土日祝は雨休率に含まれる扱い（工程計画作成支援システムと同じ）なので、表示の網掛けだけに使う */
+function inPeriod(p,n){
+  if(p.yearly){const[y]=ymd(n),y0=+p.y0||0,y1=+p.y1||9999;const a=parse(p.from),b=parse(p.to);if(a==null||b==null)return false;
+    const[,m1,d1]=ymd(a),[,m2,d2]=ymd(b),wrap=m2*100+d2<m1*100+d1;
+    for(const yy of wrap?[y-1,y]:[y]){if(yy<y0||yy>y1)continue;const s=dn(yy,m1,d1),e=wrap?dn(yy+1,m2,d2):dn(yy,m2,d2);if(n>=s&&n<=e)return true}
+    return false}
+  const a=parse(p.from),b=parse(p.to);return a!=null&&b!=null&&n>=a&&n<=b;
+}
+function offInfo(n){for(const p of state.settings.periods)if(inPeriod(p,n))return p.name||'作業不能期間';return''}
+function dispOff(n){const S=state.settings;
+  if(S.nat){const h=jpHolidays(ymd(n)[0]).get(n);if(h)return h}
+  const w=dow(n);if(w===6&&S.sat)return'土曜';if(w===0&&S.sun)return'日曜';return''}
+function off(n){if(offCache.has(n))return offCache.get(n);const v=offInfo(n);offCache.set(n,v);return v}
+const snapF=(n,cal)=>{if(!cal)return n;let i=0;while(off(n)&&i++<400)n++;return n};
+const snapB=(n,cal)=>{if(!cal)return n;let i=0;while(off(n)&&i++<400)n--;return n};
+function addW(n,k,cal){if(!cal)return n+k;const s=k>0?1:-1;let c=Math.abs(k),i=0;while(c>0&&i++<20000){n+=s;if(!off(n))c--}return n}
+function diffW(a,b,cal){if(!cal)return b-a;let k=0;if(b>a){for(let n=a+1;n<=b;n++)if(!off(n))k++}else{for(let n=a-1;n>=b;n--)if(!off(n))k--}return k}
+function span(a,b,cal){if(b<a)return 1;if(!cal)return b-a+1;let k=0;for(let n=a;n<=b;n++)if(!off(n))k++;return Math.max(1,k)}
+const endFrom=(s,d,cal)=>addW(snapF(s,cal),Math.max(1,d)-1,cal);
+const startFrom=(e,d,cal)=>addW(snapB(e,cal),-(Math.max(1,d)-1),cal);
+
+function T(id,name,parent,o={}){return Object.assign({id,name,parent,startRule:{type:'fixed',date:''},endRule:{type:'fixed',date:''},anchor:'start',deadline:null,dur:5,as:'',ae:'',prog:0,who:'',proc:'',note:'',cPlan:'',cAct:'',collapsed:false,
+  spec:'',qty:'',unit:'',daily:'',parties:1,durSrc:'work',work:5,rainRate:'',restricted:true,buk:[],site:'',xmlNo:null},o)}
+const ent=(ref,off=1,base='end')=>({ref,base,offset:off});
+const rel=(refs,mode='max')=>({type:'rel',mode,refs:Array.isArray(refs)?refs:[refs]});
+function migrateRule(r){if(r&&r.type==='rel'&&!Array.isArray(r.refs))return{type:'rel',mode:r.mode||'max',refs:r.ref?[{ref:r.ref,base:r.base||'end',offset:+r.offset||0}]:[]};return r}
+const KOJI0={place:'',from:'',to:'',rainRate:0.9,jigyo:'',kubun:'',kyokuCode:'',kyokuName:'',taishoName:'',A:'',b:'',prep:'',clean:''};
+function sample(){
+  const Y=(q,d,o)=>Object.assign({durSrc:'yield',qty:q,daily:d},o);
+  return{title:'○○川 河道掘削工事',sample:true,savedAt:0,
+    settings:{sat:true,sun:true,nat:true,periods:[{name:'河川の出水期',from:'2026-06-01',to:'2026-10-31',yearly:true,y0:2026,y1:9999}],
+      koji:Object.assign({},KOJI0,{place:'○○県○○市地先',from:'2027-01-12',to:'2027-12-24',rainRate:0.9,jigyo:'河川改修',kubun:'築堤･護岸',kyokuCode:'86',kyokuName:'近畿地方整備局',taishoName:'河川工事',A:11.02,b:0.173,prep:40,clean:20}),
+      colors:{plan:'#2563c9',act:'#ef7d1a',parent:'#3a4452',linkPlan:'#2563c9',linkAct:'#c2410c'}},
+    view:{sort:'input',showPlanLinks:true,showActLinks:true,lblName:true,lblStart:true,lblEnd:true,lblAct:true,lblWait:true,dw:14,leftW:640,kind:'plan',shadeWeek:false},
+    tasks:[
+      T('p1','準備工',null,{qty:1,unit:'式'}),
+      T('t11','準備工','p1',{startRule:{type:'fixed',date:'2027-01-12'},qty:1,unit:'式',work:30,rainRate:0,restricted:false,proc:'01 準備'}),
+      T('p2','河川土工',null,{qty:1,unit:'式'}),
+      T('p21','伐木除根工','p2',{qty:1,unit:'式'}),
+      T('t211','伐木・伐竹','p21',Y(17900,439,{spec:'伐竹',unit:'m2',parties:3,startRule:rel(ent('t11')),proc:'02 伐木除根',buk:[{code:'CB320510',eda:'0004',name:'伐木・伐竹（伐木除根）',unit:'1ｍ２',daily:439,cond:'樹木・竹の区分　樹木密集度及び施工区分=伐竹',J:[['J01','5']]}]})),
+      T('t212','除根整地','p21',Y(21500,534.286,{unit:'m2',parties:3,startRule:rel(ent('t211')),proc:'02 伐木除根'})),
+      T('p22','掘削工(ICT)','p2',{qty:1,unit:'式'}),
+      T('t221','掘削(ICT)','p22',Y(8500,350,{spec:'土砂 ｵｰﾌﾟﾝｶｯﾄ 障害無し',unit:'m3',startRule:rel([ent('t212'),ent('t31')]),proc:'03 掘削',buk:[{code:'CB210120',eda:'0003',name:'掘削（ＩＣＴ）',unit:'1ｍ３',daily:350,cond:'土質=土砂; 施工方法=オープンカット; 障害の有無=無し; 施工数量=10,000m3以上50,000m3未満',J:[['J01','1'],['J02','1'],['J03','1'],['J04','3']]}]})),
+      T('t222','土砂等運搬','p22',Y(1410,273,{spec:'土砂（岩塊・玉石混り土含む）',unit:'m3',startRule:rel(ent('t221',0,'start')),proc:'03 掘削',note:'掘削と同時に開始'})),
+      T('p23','法面整形工(ICT)','p2',{qty:1,unit:'式'}),
+      T('t231','法面整形(切土部)(ICT)','p23',Y(880,154,{spec:'ﾚｷ質土､砂及び砂質土､粘性土',unit:'m2',startRule:rel(ent('t221')),proc:'04 法面整形',note:'途中で出水期に入るため、出水期明けに再開'})),
+      T('p3','仮設工',null,{qty:1,unit:'式'}),
+      T('t31','敷鉄板','p3',{spec:'22×1,524×6,096（mm） 設置',qty:3020,unit:'m2',work:9,startRule:rel(ent('t11')),proc:'05 仮設'}),
+      T('p4','後片付け工',null,{qty:1,unit:'式'}),
+      T('t41','後片付け工','p4',{qty:1,unit:'式',work:20,rainRate:0,restricted:false,startRule:rel(ent('t231')),proc:'06 後片付け'})
+    ],
+    links:[
+      {id:'l1',from:'t11',to:'t211',kind:'plan'},{id:'l2',from:'t211',to:'t212',kind:'plan'},{id:'l3',from:'t212',to:'t221',kind:'plan'},{id:'l4',from:'t11',to:'t31',kind:'plan'},
+      {id:'l5',from:'t31',to:'t221',kind:'plan'},{id:'l6',from:'t221',to:'t231',kind:'plan'},{id:'l7',from:'t231',to:'t41',kind:'plan'}
+    ]};
+}
+function fill(o){
+  const d=sample();
+  return{title:o.title??'',sample:!!o.sample,savedAt:o.savedAt||0,
+    settings:Object.assign({},d.settings,o.settings||{},{colors:Object.assign({},d.settings.colors,(o.settings||{}).colors||{}),koji:Object.assign({},KOJI0,(o.settings||{}).koji||{}),periods:(o.settings&&o.settings.periods)||[]}),
+    view:Object.assign({},d.view,o.view||{}),
+    tasks:(o.tasks||[]).map(t=>{const x=Object.assign(T(t.id||uid(),'',null),t);if(t.durSrc==null)x.durSrc='fixed';x.startRule=migrateRule(x.startRule);x.endRule=migrateRule(x.endRule);return x}),links:o.links||[]};
+}
+const dataObj=()=>({title:state.title,sample:state.sample,savedAt:state.savedAt,settings:state.settings,view:state.view,tasks:state.tasks,links:state.links});
+
+/* ---------- 計算 ---------- */
+const nm=id=>{const t=byId[id];return t?((WBS[id]?WBS[id]+' ':'')+t.name):'（不明）'};
+const calOf=t=>t.restricted!==false;
+/* 日数：施工日数＝数量÷日当り施工量、雨休日数＝切り上げ(施工日数×雨休率)、暦日数＝切り上げ((施工日数＋雨休日数)÷班数) */
+const rateOf=t=>{const v=t.rainRate;return v===''||v==null||!isFinite(+v)?(+state.settings.koji.rainRate||0):+v};
+function calcDur(t){
+  const rate=rateOf(t),pt=Math.max(1,Math.round(+t.parties||1)),fix=Math.max(1,Math.round(+t.dur||1));
+  if(t.durSrc==='fixed')return{dur:fix,work:null,rain:null,rate,pt,src:'fixed'};
+  let work=null,err='';
+  if(t.durSrc==='yield'){const q=+t.qty,d=+t.daily;if(q>0&&d>0)work=q/d;else err='数量と日当り施工量を入れると日数を計算します'}
+  else{work=+t.work;if(!(work>0)){work=null;err='施工日数が未入力です'}}
+  if(work==null)return{dur:fix,work:null,rain:null,rate,pt,src:t.durSrc,err};
+  const rain=Math.ceil(work*rate-1e-9);
+  return{dur:Math.max(1,Math.ceil((work+rain)/pt-1e-9)),work,rain,rate,pt,src:t.durSrc};
+}
+const f2=v=>v==null||!isFinite(v)?'':(Math.round(v*100)/100).toString();
+function durText(t,c){if(!c||c.parent)return'';if(c.anchor==='both')return'開始日と完了日の両方で拘束しているため、暦日数は日付から決まります';
+  if(c.src==='fixed')return`暦日数 ${c.dur}日（直接入力）`;if(c.work==null)return c.derr||'';
+  return`${c.src==='yield'?`数量 ${t.qty}÷日当り施工量 ${t.daily}＝`:''}施工日数 ${f2(c.work)}日＋雨休 ${c.rain}日（雨休率 ${c.rate}）${c.pt>1?`÷班数 ${c.pt}`:''} → 暦日数 ${c.dur}日`}
+function normalize(){
+  const ids=new Set(state.tasks.map(t=>t.id)),ch={},out=[],seen=new Set();
+  for(const t of state.tasks){if(t.parent&&(!ids.has(t.parent)||t.parent===t.id))t.parent=null;(ch[t.parent||'root']=ch[t.parent||'root']||[]).push(t)}
+  const walk=p=>{for(const t of ch[p]||[]){if(seen.has(t.id))continue;seen.add(t.id);out.push(t);walk(t.id)}};
+  walk('root');
+  for(const t of state.tasks)if(!seen.has(t.id)){t.parent=null;seen.add(t.id);out.push(t);walk(t.id)}
+  state.tasks=out;
+}
+function index(){byId={};kids={};IDX=new Map();state.tasks.forEach((t,i)=>{byId[t.id]=t;IDX.set(t.id,i)});for(const t of state.tasks){const k=t.parent||'root';(kids[k]=kids[k]||[]).push(t)}}
+function recompute(){offCache.clear();normalize();index();C={};for(const t of state.tasks)comp(t,new Set());
+  /* 期限：日程は動かさず、予定完了日が期限を過ぎた日数（休日考慮時は稼働日）を求める */
+  for(const t of state.tasks){const c=C[t.id];if(!c||c.parent||!t.deadline)continue;const dl=curOf(t.deadline,c.cal);if(dl==null)continue;c.dl=dl;
+    let k=0;if(c.pe>dl){if(c.cal){for(let n=dl+1;n<=c.pe;n++)if(!off(n))k++;k=Math.max(1,k)}else k=c.pe-dl}c.over=k}}
+function resolve(rule,cal,vis){
+  if(!rule)return null;
+  if(rule.type!=='rel')return parse(rule.date);
+  let out=null,n=0;const add=d=>{n++;out=out==null?d:(rule.mode==='min'?Math.min(out,d):Math.max(out,d))};
+  for(const e of rule.refs||[]){const ref=byId[e.ref];if(!ref)continue;const x=comp(ref,vis);if(!x)return null;add(addW(e.base==='start'?x.ps:x.pe,+e.offset||0,cal))}
+  const fd=parse(rule.date);if(fd!=null)add(fd);
+  return n?out:null;
+}
+/* 区間の和集合（親＝子の水平投影）。間が休日だけなら1本につなげる */
+function mergeSegs(list,cal){
+  const a=list.filter(x=>x&&x[0]!=null&&x[1]!=null).map(x=>[x[0],x[1]]).sort((p,q)=>p[0]-q[0]),out=[];
+  for(const g of a){const l=out[out.length-1];
+    if(l){let gap=true;for(let n=l[1]+1;n<g[0];n++)if(!(cal&&off(n))){gap=false;break}
+      if(g[0]<=l[1]+1||gap){l[1]=Math.max(l[1],g[1]);continue}}
+    out.push(g)}
+  return out;
+}
+function comp(t,vis){
+  if(C[t.id])return C[t.id];
+  if(vis.has(t.id))return null;
+  vis.add(t.id);
+  const ch=kids[t.id]||[],cal=calOf(t);let r;
+  if(ch.length){
+    let ps=Infinity,pe=-Infinity,as=Infinity,ae=-Infinity,ws=0,pgs=0,anyA=false,allDone=true;
+    for(const c of ch){const x=comp(c,vis);if(!x)continue;ps=Math.min(ps,x.ps);pe=Math.max(pe,x.pe);ws+=x.dur;pgs+=x.dur*x.prog;
+      if(x.as!=null){anyA=true;as=Math.min(as,x.as);ae=Math.max(ae,x.aeDraw)}if(x.ae==null)allDone=false}
+    if(!isFinite(ps)){ps=pe=todayN}
+    const segs=mergeSegs(ch.map(c=>C[c.id]).filter(Boolean).flatMap(x=>x.segs),cal),asegs=mergeSegs(ch.map(c=>C[c.id]).filter(Boolean).flatMap(x=>x.asegs),cal);
+    r={parent:true,segs,asegs,ps,pe,dur:span(ps,pe,cal),prog:ws?pgs/ws:0,as:anyA?as:null,ae:anyA&&allDone?ae:null,aeDraw:anyA?ae:null,cal,err:''};
+  }else{
+    const D=calcDur(t),dur=D.dur;let ps,pe,err='';
+    if(t.anchor==='end'){let e=resolve(t.endRule,cal,vis);if(e==null){e=todayN;err='完了日の基準を解決できません（循環参照または未設定）'}pe=snapB(e,cal);ps=startFrom(pe,dur,cal)}
+    else if(t.anchor==='both'){let s=resolve(t.startRule,cal,vis),e=resolve(t.endRule,cal,vis);if(s==null){s=todayN;err='開始日の基準を解決できません'}if(e==null){e=s;err='完了日の基準を解決できません'}ps=snapF(s,cal);pe=snapB(e,cal);if(pe<ps){pe=ps;err='完了日が開始日より前になっています'}}
+    else{let s=resolve(t.startRule,cal,vis);if(s==null){s=todayN;err='開始日の基準を解決できません（循環参照または未設定）'}ps=snapF(s,cal);pe=endFrom(ps,dur,cal)}
+    const as=parse(t.as),ae=as!=null?parse(t.ae):null;
+    r={parent:false,ps,pe,dur:t.anchor==='both'?span(ps,pe,cal):dur,prog:clamp(+t.prog||0,0,100),as,ae,aeDraw:as!=null?(ae!=null?Math.max(ae,as):Math.max(as,todayN)):null,cal,err,work:D.work,rain:D.rain,rate:D.rate,pt:D.pt,src:D.src,derr:D.err||'',anchor:t.anchor};
+    r.segs=[[ps,pe]];r.asegs=as!=null?[[as,r.aeDraw]]:[];
+  }
+  vis.delete(t.id);C[t.id]=r;return r;
+}
+const usedKeys=t=>t.anchor==='end'?['endRule']:t.anchor==='both'?['startRule','endRule']:['startRule'];
+function deps(t){const ch=kids[t.id]||[];if(ch.length)return ch.map(c=>c.id);return usedKeys(t).flatMap(k=>{const r=t[k];return r&&r.type==='rel'?(r.refs||[]).map(e=>e.ref):[]})}
+function dependsOn(a,b,seen=new Set()){if(a===b)return true;if(seen.has(a))return false;seen.add(a);const t=byId[a];return!!t&&deps(t).some(x=>dependsOn(x,b,seen))}
+function curOf(r,cal){if(!r)return null;if(r.type!=='rel')return parse(r.date);let out=null;const add=d=>{out=out==null?d:(r.mode==='min'?Math.min(out,d):Math.max(out,d))};
+  for(const e of r.refs||[]){const x=C[e.ref];if(!x)continue;add(addW(e.base==='start'?x.ps:x.pe,+e.offset||0,cal))}const fd=parse(r.date);if(fd!=null)add(fd);return out}
+function setRule(t,key,date,cal){const r=t[key];if(r&&r.type==='rel'){const cur=curOf(r,cal);if(cur!=null){const dk=diffW(cur,date,cal);for(const e of r.refs)e.offset=(+e.offset||0)+dk;if(r.date)r.date=iso(addW(parse(r.date),dk,cal));return}}t[key]={type:'fixed',date:iso(date)}}
+function applyPlan(t,ns,ne){
+  const cal=calOf(t);if(ne<ns)ne=ns;const d=span(ns,ne,cal);
+  if(t.anchor==='end')setRule(t,'endRule',ne,cal);
+  else if(t.anchor==='both'){setRule(t,'startRule',ns,cal);setRule(t,'endRule',ne,cal)}
+  else setRule(t,'startRule',ns,cal);
+  const cur=C[t.id]?C[t.id].dur:null;
+  if(t.anchor==='both'||d!==cur){if(t.anchor!=='both'&&t.durSrc!=='fixed')toast('暦日数を直接入力に切り替えました（詳細設定で数量・歩掛からの計算に戻せます）');t.durSrc=t.anchor==='both'?t.durSrc:'fixed';t.dur=d}
+}
+function shiftTask(t,delta,sub){
+  const cal=calOf(t),c=C[t.id];
+  const keys=t.anchor==='end'?['endRule']:t.anchor==='both'?['startRule','endRule']:['startRule'];
+  for(const k of keys){const r=t[k];if(sub&&r&&r.type==='rel'&&r.refs.length&&r.refs.every(e=>sub.has(e.ref)))continue;
+    const cur=k==='startRule'?c.ps:c.pe;const nd=delta>=0?snapF(cur+delta,cal):snapB(cur+delta,cal);setRule(t,k,nd,cal)}
+}
+function subtreeIds(id){const s=new Set([id]);const w=p=>{for(const c of kids[p]||[]){s.add(c.id);w(c.id)}};w(id);return s}
+function subEnd(id){const i=state.tasks.findIndex(t=>t.id===id);const s=subtreeIds(id);let j=i+1;while(j<state.tasks.length&&s.has(state.tasks[j].id))j++;return j}
+function extract(id){const s=subtreeIds(id);const b=state.tasks.filter(t=>s.has(t.id));state.tasks=state.tasks.filter(t=>!s.has(t.id));return b}
+function isAnc(a,id){let p=byId[id]?.parent,g=0;while(p&&g++<9999){if(p===a)return true;p=byId[p]?.parent}return false}
+function sanitize(){
+  for(const t of state.tasks)if(t.deadline&&t.deadline.refs)t.deadline.refs=t.deadline.refs.filter(e=>byId[e.ref]&&e.ref!==t.id&&!isAnc(e.ref,t.id)&&!isAnc(t.id,e.ref));
+  for(const t of state.tasks)for(const k of['startRule','endRule']){const r=t[k];if(!r||r.type!=='rel')continue;
+    const keep=(r.refs||[]).filter(e=>byId[e.ref]&&e.ref!==t.id&&!isAnc(e.ref,t.id)&&!isAnc(t.id,e.ref));
+    if(keep.length!==(r.refs||[]).length){if(keep.length)r.refs=keep;else{const c=C[t.id];t[k]={type:'fixed',date:iso(c?(k==='startRule'?c.ps:c.pe):todayN)}}}}
+}
+/* 親のバーは子のバーの水平投影。親につながるパス・関連付けは子に渡す */
+function leafIds(id){const out=[];const w=x=>{const ch=kids[x]||[];if(!ch.length)out.push(x);else ch.forEach(c=>w(c.id))};w(id);return out}
+function innerEdges(id){
+  const L=leafIds(id),S=new Set(L),E=[];
+  for(const v of L){const t=byId[v];for(const k of usedKeys(t)){const r=t[k];if(r&&r.type==='rel')for(const e of r.refs||[])if(S.has(e.ref))E.push(k==='endRule'&&e.base==='start'?[v,e.ref]:[e.ref,v])}}
+  for(const l of state.links)if(l.kind==='plan'&&S.has(l.from)&&S.has(l.to))E.push([l.from,l.to]);
+  return{L,E};
+}
+function entries(id){if(!(kids[id]||[]).length)return[id];const{L,E}=innerEdges(id);const r=L.filter(v=>!E.some(([a,b])=>b===v&&a!==v));return r.length?r:L}
+function exits(id){if(!(kids[id]||[]).length)return[id];const{L,E}=innerEdges(id);const r=L.filter(v=>!E.some(([a,b])=>a===v&&b!==v));return r.length?r:L}
+function fixParentLinks(){
+  const out=[],seen=new Set();
+  for(const l of state.links){if(!byId[l.from]||!byId[l.to])continue;
+    for(const f of exits(l.from))for(const t of entries(l.to)){if(f===t)continue;const k=f+'>'+t+'>'+l.kind;if(seen.has(k))continue;seen.add(k);out.push(f===l.from&&t===l.to?l:Object.assign({id:uid(),from:f,to:t,kind:l.kind},l.note?{note:l.note}:{}))}}
+  state.links=out;
+}
+function inheritToChild(P,ch,isNew){
+  if(!P||!ch||P.id===ch.id)return;
+  const targets=(kids[ch.id]||[]).length?entries(ch.id).map(i=>byId[i]):[ch];
+  for(const c of targets){
+    if(isNew){for(const k of['startRule','endRule','anchor','restricted'])c[k]=JSON.parse(JSON.stringify(P[k]));c.durSrc='fixed';c.dur=C[P.id]?C[P.id].dur:P.dur;if(P.as){c.as=P.as;c.ae=P.ae;c.prog=P.prog}}
+    else for(const k of['startRule','endRule'])if(P[k]&&P[k].type==='rel'&&(!c[k]||c[k].type!=='rel'))c[k]=JSON.parse(JSON.stringify(P[k]));
+  }
+}
+function sortSib(a){
+  const v=state.view.sort,ix=id=>IDX.get(id);
+  if(v==='date')a.sort((x,y)=>C[x.id].ps-C[y.id].ps||C[x.id].pe-C[y.id].pe||ix(x.id)-ix(y.id));
+  else if(v==='proc'){const pk=t=>{if(t.proc)return t.proc;const ch=kids[t.id];if(!ch)return'';const l=ch.map(pk).filter(Boolean).sort((a,b)=>a.localeCompare(b,'ja',{numeric:true}));return l[0]||''};
+    a.sort((x,y)=>{const p=pk(x),q=pk(y);if(!p&&q)return 1;if(p&&!q)return-1;return p.localeCompare(q,'ja',{numeric:true})||C[x.id].ps-C[y.id].ps||ix(x.id)-ix(y.id)})}
+  return a;
+}
+function buildRows(){
+  const out=[];FULL=[];WBS={};
+  const walk=(p,depth,pre,hid)=>{sortSib((kids[p]||[]).slice()).forEach((t,i)=>{const w=pre?pre+'.'+(i+1):String(i+1);WBS[t.id]=w;FULL.push(t);if(!hid)out.push({t,depth,wbs:w});walk(t.id,depth+1,w,hid||t.collapsed)})};
+  walk('root',0,'',false);return out;
+}
+function ruleText(t,key){
+  const r=t[key],hd=key==='startRule'?'開始':key==='endRule'?'完了':'期限';
+  if(!r)return hd+'：なし';
+  if(r.type!=='rel')return hd+'：日付指定 '+fmt(parse(r.date));
+  const cal=calOf(t);
+  const ls=(r.refs||[]).map(e=>{const x=C[e.ref],o=+e.offset||0,d=x?addW(e.base==='start'?x.ps:x.pe,o,cal):null;return `${nm(e.ref)} の${e.base==='start'?'開始日':'完了日'} ${o>=0?'+':''}${o}日${d!=null?'（'+fmt(d)+'）':''}`});
+  if(r.date)ls.push('指定日 '+fmt(parse(r.date)));
+  if(ls.length<2)return `${hd}：${ls[0]||'基準なし'}`;
+  return `${hd}：次のうち${r.mode==='min'?'最も早い日':'最も遅い日'}\n・${ls.join('\n・')}`;
+}
+
+/* ---------- 描画：表 ---------- */
+const COLS=[{k:'grip',l:'',w:22},{k:'wbs',l:'No.',w:48},{k:'name',l:'工種・種別・細別',w:220},{k:'spec',l:'規格',w:130},{k:'qty',l:'数量',w:76},{k:'unit',l:'単位',w:48},{k:'daily',l:'日当り<small>施工量</small>',w:76},{k:'parties',l:'班数',w:44},{k:'work',l:'施工<small>日数</small>',w:66},{k:'dur',l:'暦日数',w:62},{k:'ps',l:'開始予定日',w:124},{k:'pe',l:'完了予定日',w:124},{k:'as',l:'開始日<small>実績</small>',w:124},{k:'ae',l:'完了日<small>実績</small>',w:124},{k:'prog',l:'進捗度',w:64},{k:'who',l:'担当者',w:90},{k:'note',l:'備考',w:170}];
+const lhead=$('#lhead'),lbody=$('#lbody'),lin=$('#lin'),rhead=$('#rhead'),rbody=$('#rbody'),hsvg=$('#hsvg'),csvg=$('#csvg');
+function renderLeft(){
+  const tw=COLS.reduce((s,c)=>s+c.w,0);
+  $('#left').style.setProperty('--gt',COLS.map(c=>c.w+'px').join(' '));
+  lhead.style.width=lbody.style.width=tw+'px';lhead.style.minWidth=lbody.style.minWidth=tw+'px';
+  lhead.innerHTML=COLS.map(c=>`<div class="h">${c.l}</div>`).join('');
+  lin.style.height=(ROWS.length*RH+80)+'px';
+  lin.innerHTML=ROWS.map(rowHTML).join('');
+  const who=new Set(activeUsers().map(u=>u.name)),proc=new Set();for(const t of state.tasks){if(t.who)who.add(t.who);if(t.proc)proc.add(t.proc)}
+  $('#dl-who').innerHTML=[...who].map(v=>`<option value="${esc(v)}">`).join('');
+  $('#dl-proc').innerHTML=[...proc].sort().map(v=>`<option value="${esc(v)}">`).join('');
+}
+function rowHTML(r){
+  const t=r.t,c=C[t.id],P=c.parent,mine=owns(t.id),RD=mine?'':' readonly';
+  const di=(k,v)=>`<input type="date" data-k="${k}" value="${iso(v)}"${RD}>`;
+  const ro=(v,cl='')=>`<div class="c ro ${cl}">${v}</div>`;
+  const sRel=!P&&t.anchor!=='end'&&t.startRule?.type==='rel',eRel=!P&&t.anchor!=='start'&&t.endRule?.type==='rel';
+  const sTip=P?'子タスクから自動計算':t.anchor==='end'?'完了日と作業日数から計算':ruleText(t,'startRule');
+  const eTip=P?'子タスクから自動計算':t.anchor==='start'?'開始日と作業日数から計算':ruleText(t,'endRule');
+  return `<div class="row${P?' par':''}${t.id===sel?' sel':''}${mine?(isAdmin()?'':' mine'):' lock'}" data-id="${t.id}"${mine?'':` title="${esc(t.who?`担当：${t.who}（${ME?'担当外のため閲覧のみ':'閲覧のみ'}）`:'担当者未設定（管理者だけが編集できます）')}"`}>
+<div class="c grip" title="ドラッグで上下に移動（行の中央に落とすと子タスクになります）">⠿</div>
+<div class="c wbs" title="ダブルクリックで詳細設定">${r.wbs}</div>
+<div class="c name" style="padding-left:${3+r.depth*16}px">${P?`<button class="tg" data-tg title="折りたたみ">${t.collapsed?'▸':'▾'}</button>`:'<span class="tg0"></span>'}<input data-k="name" value="${esc(t.name)}" placeholder="名称"${RD}>${c.err?`<span class="warn" title="${esc(c.err)}">!</span>`:''}${c.over?`<span class="warn ov" title="${esc(`期限 ${fmt(c.dl)} を ${c.over}日超過しています\n${ruleText(t,'deadline')}`)}">期</span>`:''}</div>
+<div class="c"><input data-k="spec" value="${esc(t.spec)}"${RD}></div>
+<div class="c"><input type="number" min="0" step="any" data-k="qty" value="${esc(t.qty)}"${RD}></div>
+<div class="c"><input data-k="unit" value="${esc(t.unit)}"${RD}></div>
+${P?ro(''):`<div class="c${t.durSrc==='yield'?'':' auto'}"><input type="number" min="0" step="any" data-k="daily" value="${esc(t.daily)}"${RD} title="日当り施工量（数量÷日当り施工量で施工日数を計算）"></div>`}
+${P?ro(''):`<div class="c"><input type="number" min="1" data-k="parties" value="${esc(t.parties)}"${RD}></div>`}
+${P?ro(''):`<div class="c${t.durSrc==='work'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="0" step="any" data-k="work" value="${c.work!=null?f2(c.work):''}"${RD}${c.src==='yield'?' readonly':''}></div>`}
+${P?ro(c.dur,'num'):`<div class="c${t.durSrc==='fixed'||t.anchor==='both'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="1" data-k="dur" value="${c.dur}"${RD}></div>`}
+${P?ro(fmt(c.ps)):`<div class="c${sRel?' rel':''}" title="${esc(sTip)}">${di('ps',c.ps)}</div>`}
+${P?ro(fmt(c.pe)):`<div class="c${eRel?' rel':''}${c.over?' over':''}" title="${esc(eTip+(c.dl!=null?'\n'+ruleText(t,'deadline')+(c.over?`\n→ ${c.over}日超過`:'\n→ 期限内'):''))}">${di('pe',c.pe)}</div>`}
+${P?ro(fmt(c.as)):`<div class="c">${di('as',parse(t.as))}</div>`}
+${P?ro(c.ae!=null?fmt(c.ae):''):`<div class="c">${di('ae',c.ae)}</div>`}
+${P?ro(Math.round(c.prog)+'%','num'):`<div class="c"><input type="number" min="0" max="100" step="5" data-k="prog" value="${c.prog}"${RD}></div>`}
+<div class="c"><input data-k="who" list="dl-who" value="${esc(t.who)}"${isAdmin()?'':' readonly title="担当者の変更は管理者だけができます"'}></div>
+<div class="c"><input data-k="note" value="${esc(t.note)}"${RD}></div></div>`;
+}
+
+/* ---------- 描画：チャート ---------- */
+const X=n=>(n-R.from)*DW;
+function calcRange(){
+  let mn=todayN,mx=todayN;
+  for(const id in C){const c=C[id];mn=Math.min(mn,c.ps,c.as??Infinity);mx=Math.max(mx,c.pe,c.aeDraw??-Infinity)}
+  {const K=state.settings.koji,a=parse(K.from),b=parse(K.to);if(a!=null)mn=Math.min(mn,a);if(b!=null)mx=Math.max(mx,b)}
+  let from=mn-10;from-=(dow(from)+6)%7;
+  return{from,to:Math.max(mx+35,from+70)};
+}
+function renderHead(){
+  const W=(R.to-R.from+1)*DW;let s='';
+  for(let d=R.from;d<=R.to;){const[y,m]=ymd(d);const nx=dn(m===12?y+1:y,m===12?1:m+1,1),e=Math.min(nx-1,R.to);const x=X(d),w=X(e+1)-x;
+    s+=`<rect x="${x}" y="0" width="${w}" height="20" class="mh"/>${w>90?`<text x="${x+6}" y="15" class="mt" data-x0="${x}" data-x1="${x+w}">${y}年${m}月</text>`:''}`;d=e+1}
+  const sw=state.view.shadeWeek;let tx='';
+  for(let d=R.from;d<=R.to;d++){const x=X(d),o=off(d),h=dispOff(d),w=dow(d),[,,dd]=ymd(d);
+    const cl=(h&&h!=='土曜')||w===0?'hd sun':w===6?'hd sat':'hd';
+    if(o)s+=`<rect x="${x}" y="20" width="${DW}" height="32" class="hrst"><title>${esc(fmt(d)+' '+o+'（作業不能期間）'+(h?' '+h:''))}</title></rect>`;
+    else if(h&&sw)s+=`<rect x="${x}" y="20" width="${DW}" height="32" class="hhol"><title>${esc(fmt(d)+' '+h)}</title></rect>`;
+    if(d===todayN)s+=`<rect x="${x}" y="20" width="${DW}" height="32" class="todayh"/>`;
+    if(DW>=15){tx+=`<text x="${x+DW/2}" y="34" class="${cl}" text-anchor="middle">${dd}</text>`;if(DW>=18)tx+=`<text x="${x+DW/2}" y="48" class="${cl}" text-anchor="middle">${WD[w]}</text>`}
+    else if(w===1)tx+=`<text x="${x+2}" y="40" class="hd">${dd}</text>`;
+    if(DW>=10||w===1)s+=`<line x1="${x}" x2="${x}" y1="20" y2="52" class="${w===1?'gl2':'gl'}"/>`}
+  s+=tx;
+  hsvg.setAttribute('width',W+40);hsvg.setAttribute('height',52);hsvg.innerHTML=s;stickMonths();
+}
+function stickMonths(){const L=rbody.scrollLeft;for(const t of hsvg.querySelectorAll('.mt')){const x0=+t.dataset.x0,x1=+t.dataset.x1;t.setAttribute('x',Math.max(x0+6,Math.min(L+6,x1-80)))}}
+function renderChart(){
+  const S=state.settings,V=state.view,W=(R.to-R.from+1)*DW,H=Math.max(ROWS.length*RH+80,rbody.clientHeight);
+  let bg='',fg='',lk='',lb='';
+  if(V.shadeWeek)for(let d=R.from;d<=R.to;d++)if(dispOff(d)&&!off(d))bg+=`<rect x="${X(d)}" y="0" width="${DW}" height="${H}" class="hol"/>`;
+  for(let d=R.from;d<=R.to;){if(off(d)){let e=d;while(e+1<=R.to&&off(e+1))e++;bg+=`<rect x="${X(d)}" y="0" width="${(e-d+1)*DW}" height="${H}" class="rst"><title>${esc(off(d))}（作業不能期間）${esc(fmt(d))}〜${esc(fmt(e))}</title></rect>`;d=e+1}else d++}
+  for(let d=R.from;d<=R.to;d++){const w=dow(d);if(w===1)bg+=`<line x1="${X(d)}" x2="${X(d)}" y1="0" y2="${H}" class="gl2"/>`;else if(DW>=14)bg+=`<line x1="${X(d)}" x2="${X(d)}" y1="0" y2="${H}" class="gl"/>`}
+  const RI={},LROW={};
+  ROWS.forEach((r,i)=>{RI[r.t.id]=i;const ch=(kids[r.t.id]||[]).length;if(!ch)LROW[r.t.id]=i;else if(r.t.collapsed)for(const l of leafIds(r.t.id))LROW[l]=i});
+  const visId=id=>{let x=id,g=0;while(x&&RI[x]==null&&g++<999)x=byId[x]?.parent;return x};
+  const selRow=sel?visId(sel):null;
+  ROWS.forEach((r,i)=>{const y=i*RH;if(r.t.id===selRow)bg+=`<rect x="0" y="${y}" width="${W}" height="${RH}" class="selr"/>`;
+    bg+=`<line x1="0" x2="${W}" y1="${y+HALF}" y2="${y+HALF}" class="ml"/><line x1="0" x2="${W}" y1="${y+RH}" y2="${y+RH}" class="rl"/>`});
+  {const K=S.koji,k1=parse(K.from),k2=parse(K.to);
+    if(k1!=null&&k1>=R.from&&k1<=R.to)lb+=`<line x1="${X(k1)}" x2="${X(k1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k1)+3}" y="${ROWS.length*RH+16}" class="kkt">工期始 ${md(k1)}</text>`;
+    if(k2!=null&&k2>=R.from&&k2<=R.to)lb+=`<line x1="${X(k2+1)}" x2="${X(k2+1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k2+1)-3}" y="${ROWS.length*RH+16}" class="kkt" text-anchor="end">工期末 ${md(k2)}</text>`}
+  if(todayN>=R.from&&todayN<=R.to)bg+=`<rect x="${X(todayN)}" y="0" width="${DW}" height="${H}" class="todayc"/><line x1="${X(todayN)+DW/2}" x2="${X(todayN)+DW/2}" y1="0" y2="${H}" class="todayl"/>`;
+  const tipOf=(t,c)=>esc(`${WBS[t.id]} ${t.name}${t.spec?' '+t.spec:''}${t.qty!==''&&t.qty!=null?`　${t.qty}${t.unit}`:''}\n予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}（暦日 ${c.dur}日）`+(!c.parent&&c.work!=null?`\n${durText(t,c)}`:'')+(c.as!=null?`\n実施 ${fmt(c.as)} 〜 ${c.ae!=null?fmt(c.ae):'作業中'}`:'')+`\n進捗 ${Math.round(c.prog)}%`+(c.dl!=null?`\n期限 ${fmt(c.dl)}${c.over?`（${c.over}日超過）`:'（期限内）'}`:'')+(c.err?'\n⚠ '+c.err:''));
+  const pick=(t,c,top)=>{const x1=X(c.ps),w=X(c.pe+1)-x1;
+    if(mode.rel&&mode.last===t.id)fg+=`<rect x="${x1-3}" y="${top+1}" width="${w+6}" height="${HALF-1}" rx="4" class="pick"/>`;
+    if(mode.path&&mode.last===t.id){if(V.kind==='plan'||c.as==null)fg+=`<rect x="${x1-3}" y="${top+(V.kind==='plan'?1:HALF)}" width="${w+6}" height="${HALF-1}" rx="4" class="pick"/>`;else fg+=`<rect x="${X(c.as)-3}" y="${top+HALF}" width="${X(c.aeDraw+1)-X(c.as)+6}" height="${HALF-1}" rx="4" class="pick"/>`}};
+  /* 子のタスクバー（畳んだ親の行にも同じ形で描く） */
+  const leafBar=(t,top,inRow)=>{
+    const c=C[t.id],cp=t.cPlan||S.colors.plan,ca=t.cAct||S.colors.act,tip=tipOf(t,c),x1=X(c.ps),x2=X(c.pe+1),w=x2-x1;
+    let hb='';if(c.cal)for(let d=c.ps;d<=c.pe;d++)if(off(d))hb+=`<rect x="${X(d)}" y="${top+3}" width="${DW}" height="${HALF-5}" class="hb"/>`;
+    fg+=`<g data-part="plan" data-lid="${t.id}" class="${c.err?'err':''}"><title>${tip}</title><rect class="pb" x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" fill="${cp}"/>${hb}${c.prog>0?`<rect x="${x1}" y="${top+3}" width="${w*c.prog/100}" height="${HALF-5}" rx="3" class="pg"/>`:''}${c.over?(()=>{const o1=X(Math.max(c.ps,c.dl+1));return `<rect x="${o1}" y="${top+3}" width="${x2-o1}" height="${HALF-5}" fill="url(#ovh)"/><rect x="${o1+.75}" y="${top+3.75}" width="${Math.max(0,x2-o1-1.5)}" height="${HALF-6.5}" class="ovl"/>`})():''}${inRow?`<rect x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" class="sepl"/>`:''}</g>`;
+    if(c.dl!=null){const xd=X(c.dl+1);fg+=`<g class="dlm"><title>${esc(ruleText(t,'deadline')+(c.over?`\n${c.over}日超過`:'\n期限内'))}</title><line x1="${xd}" x2="${xd}" y1="${top}" y2="${top+HALF}"/><path d="M${xd} ${top}h-6l3 4z"/></g>`}
+    if(c.as!=null){const a1=X(c.as),a2=X(c.aeDraw+1),open=c.ae==null;
+      fg+=`<g data-part="act" data-lid="${t.id}"><title>${tip}</title><rect x="${a1}" y="${top+HALF+2}" width="${a2-a1}" height="${HALF-5}" rx="3" fill="${ca}"${open?` fill-opacity=".45" stroke="${ca}" stroke-dasharray="4 2"`:''}/></g>`;
+      if(V.lblAct&&!inRow){lb+=`<text x="${a1-4}" y="${top+HALF+13}" class="lb ac" text-anchor="end">${md(c.as)}</text>`;if(!open)lb+=`<text x="${a2+4}" y="${top+HALF+13}" class="lb ac">${md(c.ae)}</text>`}}
+    if(inRow){if(inRow==='lbl'&&V.lblName&&w>t.name.length*11+8)lb+=`<text x="${x1+w/2}" y="${top+13}" class="lbin" text-anchor="middle">${esc(t.name)}</text>`}
+    else{if(V.lblStart)lb+=`<text x="${x1-4}" y="${top+13}" class="lb" text-anchor="end">${md(c.ps)}</text>`;
+      let lx=x2+4;if(V.lblEnd){lb+=`<text x="${lx}" y="${top+13}" class="lb">${md(c.pe)}</text>`;lx+=md(c.pe).length*6.3+6}
+      if(V.lblName){lb+=`<text x="${lx}" y="${top+13}" class="lb nm">${esc(t.name)}</text>`;lx+=t.name.length*11.5+6}
+      if(c.over)lb+=`<text x="${lx}" y="${top+13}" class="lb ovt">期限超過 ${c.over}日</text>`}
+    pick(t,c,top);
+  };
+  ROWS.forEach((r,i)=>{
+    const t=r.t,c=C[t.id],top=i*RH,x1=X(c.ps),x2=X(c.pe+1);
+    if(!c.parent){leafBar(t,top,false);return}
+    if(t.collapsed){
+      const ls=leafIds(t.id);
+      for(const l of ls){const a=C[l],ov=ls.some(o=>o!==l&&C[o].ps<=a.pe&&C[o].pe>=a.ps);leafBar(byId[l],top,ov?'row':'lbl')}
+      if(V.lblStart)lb+=`<text x="${x1-4}" y="${top+13}" class="lb" text-anchor="end">${md(c.ps)}</text>`;
+      let lx=x2+4;if(V.lblEnd){lb+=`<text x="${lx}" y="${top+13}" class="lb">${md(c.pe)}</text>`;lx+=md(c.pe).length*6.3+6}
+      if(V.lblName)lb+=`<text x="${lx}" y="${top+13}" class="lb nm">${esc(t.name)}（${leafIds(t.id).length}件を表示中）</text>`;
+      pick(t,c,top);return}
+    const cp=t.cPlan||S.colors.parent,ca=t.cAct||S.colors.act,tip=tipOf(t,c);
+    const sg=c.segs&&c.segs.length?c.segs:[[c.ps,c.pe]],tot=sg.reduce((s2,[a2,b2])=>s2+X(b2+1)-X(a2),0);let left=tot*c.prog/100,pp='';
+    for(const[a2,b2]of sg){const s1=X(a2),s2=X(b2+1),sw=s2-s1;pp+=`<rect x="${s1}" y="${top+4}" width="${sw}" height="7" fill="${cp}"/><path d="M${s1} ${top+11}v5l${Math.min(6,sw/2)} -5zM${s2} ${top+11}v5l-${Math.min(6,sw/2)} -5z" fill="${cp}"/>`;
+      if(left>0){const f=Math.min(sw,left);pp+=`<rect x="${s1}" y="${top+4}" width="${f}" height="7" class="pg"/>`;left-=f}}
+    fg+=`<g data-part="plan"><title>${tip}${sg.length>1?esc('\n期間：'+sg.map(([a2,b2])=>md(a2)+'〜'+md(b2)).join('、')):''}</title>${pp}</g>`;
+    if(c.as!=null){fg+=`<g data-part="act"><title>${tip}</title>${(c.asegs&&c.asegs.length?c.asegs:[[c.as,c.aeDraw]]).map(([p1,p2])=>`<rect x="${X(p1)}" y="${top+HALF+4}" width="${X(p2+1)-X(p1)}" height="7" fill="${ca}" opacity=".85"/>`).join('')}</g>`;
+      if(V.lblAct){lb+=`<text x="${X(c.as)-4}" y="${top+HALF+13}" class="lb ac" text-anchor="end">${md(c.as)}</text>`;if(c.ae!=null)lb+=`<text x="${X(c.ae+1)+4}" y="${top+HALF+13}" class="lb ac">${md(c.ae)}</text>`}}
+    if(V.lblStart)lb+=`<text x="${x1-4}" y="${top+13}" class="lb" text-anchor="end">${md(c.ps)}</text>`;
+    let lx=x2+4;if(V.lblEnd){lb+=`<text x="${lx}" y="${top+13}" class="lb">${md(c.pe)}</text>`;lx+=md(c.pe).length*6.3+6}
+    if(V.lblName)lb+=`<text x="${lx}" y="${top+13}" class="lb nm">${esc(t.name)}</text>`;
+    pick(t,c,top);
+  });
+  const rowOf=id=>LROW[id]!=null?LROW[id]:RI[visId(id)];
+  for(const L of state.links){
+    if(L.kind==='plan'?!V.showPlanLinks:!V.showActLinks)continue;
+    const ia=rowOf(L.from),ib=rowOf(L.to);if(ia==null||ib==null)continue;
+    const a=C[L.from],b=C[L.to];if(!a||!b)continue;let ea,sb,ya,yb;
+    if(L.kind==='plan'){ea=a.pe;sb=b.ps;ya=ia*RH+9.5;yb=ib*RH+9.5}
+    else{if(a.as==null||b.as==null)continue;ea=a.aeDraw;sb=b.as;ya=ia*RH+HALF+8.5;yb=ib*RH+HALF+8.5}
+    const x1=X(ea+1),x2=X(sb),bad=sb<=ea,hh=6.5,dir=Math.sign(yb-ya);let d;
+    if(bad&&dir!==0){const ym=dir>0?ib*RH:(ib+1)*RH;d=`M${x1} ${ya}H${x1+8}V${ym}H${x2-10}V${yb}H${x2}`}
+    else if(dir===0)d=`M${x1} ${ya}L${x2} ${yb}`;
+    else if(x2-x1>=4)d=`M${x1} ${ya+dir*hh}V${yb}H${x2}`;
+    else d=`M${x1} ${ya+dir*hh}L${x2} ${yb-dir*hh}`;
+    const col=bad?'#d62828':L.kind==='plan'?S.colors.linkPlan:S.colors.linkAct;
+    if(V.lblWait&&L.note){
+      const ly=bad&&dir!==0?(dir>0?ib*RH:(ib+1)*RH):yb,xm=(x1+x2)/2;
+      lb+=`<text x="${xm}" y="${ly-4}" class="wn" fill="${col}" text-anchor="middle">${esc(L.note)}</text>`}
+    lk+=`<g class="lk" data-link="${L.id}"><title>${esc((L.kind==='plan'?'予定パス':'実施パス')+'：'+byId[L.from].name+' → '+byId[L.to].name+(bad?'（後続の開始が先行の完了以前）':'')+(L.note?'\nコメント：'+L.note:'')+(mode.path?'\nクリックでコメント・削除':''))}</title><path d="${d}" class="lkh"/><path d="${d}" stroke="${col}" class="lkp${L.kind==='plan'?'':' la'}" marker-end="url(#ar-${bad?'bad':L.kind})"/></g>`;
+  }
+  /* 選択中のバーの関連付け（パスとして引かれていないもの）を一時的に灰色の破線で示す */
+  const info=[];
+  if(sel&&byId[sel]){
+    const focus=new Set(leafIds(sel)),boxes=new Set();
+    for(const t of state.tasks){if((kids[t.id]||[]).length)continue;
+      for(const k of[...usedKeys(t),'deadline']){const r=t[k];if(!r||r.type!=='rel')continue;
+        const kn=k==='startRule'?'開始日':k==='endRule'?'完了日':'期限';
+        if(r.date&&focus.has(t.id)&&(r.refs||[]).length)info.push(`「${nm(t.id)}」の${kn} ← 指定日 ${fmt(parse(r.date))}（${r.mode==='min'?'早い方':'遅い方'}を採用）`);
+        for(const e of r.refs||[]){if(!byId[e.ref])continue;if(!(focus.has(t.id)||focus.has(e.ref)||e.ref===sel))continue;
+          const o0=+e.offset||0,many=(r.refs||[]).length>1;
+          info.push(`「${nm(t.id)}」の${kn} ← 「${nm(e.ref)}」の${e.base==='start'?'開始日':'完了日'} ${o0>=0?'+':''}${o0}日${many?(r.mode==='min'?'（複数のうち最も早い日）':'（複数のうち最も遅い日）'):''}`);
+          const ia=rowOf(e.ref),ib=rowOf(t.id);if(ia==null||ib==null)continue;
+          if(V.showPlanLinks&&state.links.some(l=>l.kind==='plan'&&((l.from===e.ref&&l.to===t.id)||(l.from===t.id&&l.to===e.ref))))continue;
+          const ca=C[e.ref],cb=C[t.id],xa=e.base==='start'?X(ca.ps):X(ca.pe+1),xb=k==='startRule'?X(cb.ps):k==='deadline'?X((cb.dl??cb.pe)+1):X(cb.pe+1),ya=ia*RH+9.5,yb=ib*RH+9.5;
+          const dv=Math.sign(yb-ya),d=ia===ib?`M${xa} ${ya}L${xb} ${yb}`:`M${xa} ${ya+dv*6.5}V${yb}H${xb}`,o=+e.offset||0;
+          lk+=`<path d="${d}" class="rlp" marker-end="url(#ar-rel)"/>`;
+          boxes.add(e.ref);boxes.add(t.id)}}}
+    for(const id of boxes){if(focus.has(id))continue;const i=rowOf(id),c=C[id];if(i==null)continue;fg+=`<rect x="${X(c.ps)-2}" y="${i*RH+1}" width="${X(c.pe+1)-X(c.ps)+4}" height="${HALF-1}" rx="4" class="relbox"/>`}
+  }
+  const ri=$('#relinfo');
+  if(info.length&&!drag){ri.innerHTML=`<b>関連付け（${info.length}件）</b><ul>${info.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><small>破線：パスを引いていない関連付け</small>`;ri.style.display='block'}else ri.style.display='none';
+  const mk=(id,c)=>`<marker id="ar-${id}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="${c}"/></marker>`;
+  csvg.setAttribute('width',W+40);csvg.setAttribute('height',H);
+  csvg.innerHTML=`<defs>${mk('plan',S.colors.linkPlan)}${mk('actual',S.colors.linkAct)}${mk('bad','#d62828')}${mk('rel','#8a929c')}<pattern id="ovh" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fde4e4"/><rect width="2.5" height="6" fill="#d62828"/></pattern></defs><g>${bg}</g><g>${fg}</g><g>${lk}</g><g>${lb}</g>`;
+}
+function renderAll(keepRange){
+  const ae=document.activeElement;let fk=null;
+  if(ae&&lin.contains(ae)&&ae.dataset.k)fk={id:ae.closest('.row')?.dataset.id,k:ae.dataset.k};
+  recompute();ROWS=buildRows();
+  if(!keepRange||!R)R=calcRange();
+  renderLeft();renderHead();renderChart();updateUI();
+  if(fk){const el=lin.querySelector(`.row[data-id="${fk.id}"] [data-k="${fk.k}"]`);if(el)el.focus({preventScroll:true})}
+  lbody.scrollTop=rbody.scrollTop;
+}
+function updateUI(){
+  const V=state.view;
+  $('#ptitle').value=state.title||'';$('#ptitle').readOnly=!isAdmin();
+  {const K=state.settings.koji,a=parse(K.from),b=parse(K.to);$('#projinfo').textContent=(a!=null&&b!=null?`工期 ${fmt(a)}〜${fmt(b)}（${b-a+1}日）`:'工期未設定')+(PROJ?'　'+(FS.name?FS.name+' / ':'')+PROJ.file:'')}
+  document.body.classList.toggle('ro',RO||!ME);document.body.classList.toggle('admin',isAdmin());
+  const wb=$('#whob');wb.textContent=ME?`${ME.name}（${ROLE[ME.role]}）`:'閲覧のみ';wb.className='whob'+(isAdmin()?' adm-b':'');
+  $('#b-me').textContent=FS.moved?'新しい場所へ':ME?'ログアウト':'ログイン';$('#b-me').title=ME?'ログアウトして閲覧のみに戻ります':'ログインして担当分を編集します';
+  $('#v-sort').value=V.sort;$('#v-kind').value=V.kind;
+  $('#v-lw').checked=V.lblWait;$('#v-lp').checked=V.showPlanLinks;$('#v-la').checked=V.showActLinks;$('#v-ln').checked=V.lblName;$('#v-ls').checked=V.lblStart;$('#v-le').checked=V.lblEnd;$('#v-lact').checked=V.lblAct;
+  const maxD=maxDepth(),cur=curLevel();
+  $('#olv').innerHTML=Array.from({length:maxD+1},(_,i)=>`<button class="btn olv${cur===i+1?' cur':''}" data-lv="${i+1}" title="階層${i+1}まで表示（それより下は畳む）">${i+1}</button>`).join('');
+  $('#zoom').value=DW;$('#b-undo').disabled=!undoS.length;$('#b-redo').disabled=!redoS.length;
+  $('#b-path').classList.toggle('on',mode.path);$('#b-path').textContent=mode.path?'パス設定モード：ON':'パス設定モード';
+  $('#b-rel').classList.toggle('on',mode.rel);$('#b-rel').textContent=mode.rel?'関連付けモード：ON':'関連付けモード';
+  document.body.classList.toggle('pathmode',mode.path);document.body.classList.toggle('relmode',mode.rel);
+  $('#pathbar').textContent=mode.rel?'関連付けモード：先行タスク → 後続タスクの順にバーをクリック（続けて押すと連続で関連付け／Escで区切り）':'パス設定モード：バーを順にクリックするとパスがつながります（Escで区切り／パスをクリックするとコメントの入力・削除）';
+  const st=$('#savest');st.className=dirty?'dirty':'';st.textContent=saving?'保存中…':dirty?'未保存の変更があります（Ctrl+S で保存）':(state.savedAt?`最新：${new Date(state.savedAt).toLocaleString('ja-JP')}${state.savedBy?' '+state.savedBy+'さんが保存':''}`:'');
+}
+
+/* ---------- アウトライン（Excelのように階層ごとに畳む） ---------- */
+const depthOf=t=>{let d=0,p=t.parent;while(p&&d<99){d++;p=byId[p]?.parent}return d};
+function maxDepth(){let m=0;for(const t of state.tasks)if(!(kids[t.id]||[]).length)m=Math.max(m,depthOf(t));return m}
+function curLevel(){const ps=state.tasks.filter(t=>(kids[t.id]||[]).length);if(!ps.length)return 1;
+  for(let n=1;n<=maxDepth()+1;n++)if(ps.every(t=>t.collapsed===(depthOf(t)>=n-1)))return n;return 0}
+function setLevel(n){for(const t of state.tasks)if((kids[t.id]||[]).length)t.collapsed=depthOf(t)>=n-1;saveLocalView();renderAll(true)}
+
+/* ---------- 変更・履歴・保存 ---------- */
+/* 元に戻す／やり直し：操作ごとに「前・後」を記録し、その操作で変わった部分だけを今の状態に戻す（ほかの人の更新は消さない） */
+const snap=()=>JSON.stringify({title:state.title,tasks:state.tasks.map(strip),links:state.links,settings:state.settings});
+const snapFull=()=>JSON.stringify({title:state.title,tasks:state.tasks,links:state.links,settings:state.settings});
+function pushUndo(pre,post){if(pre===post)return;undoS.push({pre,post});if(undoS.length>200)undoS.shift();redoS=[]}
+function applyContent(d){const col=new Set(state.tasks.filter(t=>t.collapsed).map(t=>t.id)),f=fill(d);state.title=f.title;state.settings=f.settings;state.tasks=f.tasks;state.links=f.links;for(const t of state.tasks)t.collapsed=col.has(t.id);if(sel&&!state.tasks.some(t=>t.id===sel))sel=null}
+function sameAsSaved(){if(!PROJ)return false;const a=canon(curData()),b=canon(JSON.parse(PROJ.baseText)),js=x=>JSON.stringify(x);return a.title===b.title&&js(a.tasks)===js(b.tasks)&&js(a.links)===js(b.links)&&js(a.settings)===js(b.settings)}
+function stepUndo(from,to){const r=merge3(JSON.parse(from),JSON.parse(to),curData());applyContent(r.data);recompute();fixParentLinks();dirty=!sameAsSaved();renderAll(true)}
+function markDirty(){dirty=true}
+function mutate(fn,defer){const pre=snap();fn();normalize();index();fixParentLinks();pushUndo(pre,snap());markDirty();if(defer)setTimeout(()=>renderAll(),0);else renderAll()}
+function undo(){if(RO||!PROJ)return;const e=undoS.pop();if(!e){toast('元に戻せる操作はありません');return}redoS.push(e);stepUndo(e.post,e.pre);toast('元に戻しました（Ctrl+Y でやり直し）')}
+function redo(){if(RO||!PROJ)return;const e=redoS.pop();if(!e){toast('やり直せる操作はありません');return}undoS.push(e);stepUndo(e.pre,e.post);toast('やり直しました')}
+function toast(m){const e=$('#toast');e.textContent=m;e.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>e.classList.remove('show'),2600)}
+function csvText(){
+  const q=v=>{v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  const lines=[['No.','階層','名称','規格','数量','単位','日当り施工量','班数','施工日数','雨休率','雨休日数','暦日数','開始予定日','完了予定日','開始日','完了日','進捗度(%)','担当者','工程','備考'].join(',')];
+  const depth=t=>{let d=0,p=t.parent;while(p&&d<99){d++;p=byId[p]?.parent}return d};
+  for(const t of FULL){const c=C[t.id];lines.push([WBS[t.id],depth(t)+1,t.name,t.spec,t.qty,t.unit,c.parent?'':t.daily,c.parent?'':t.parties,c.parent||c.work==null?'':f2(c.work),c.parent||c.work==null?'':c.rate,c.parent||c.rain==null?'':c.rain,c.dur,fmt(c.ps),fmt(c.pe),fmt(c.as),c.ae!=null?fmt(c.ae):'',Math.round(c.prog),t.who,t.proc,t.note].map(q).join(','))}
+  return '﻿'+lines.join('\r\n');
+}
+
+/* ---------- タスク操作 ---------- */
+function ensureInput(){if(state.view.sort!=='input'){state.view.sort='input';toast('入力順の表示に切り替えました')}}
+function newTask(start){return T(uid(),'新しいタスク',null,{startRule:{type:'fixed',date:iso(start)},endRule:{type:'fixed',date:iso(start)}})}
+function addTask(asChild){
+  const ref=sel&&byId[sel];if(asChild&&!ref){toast('親にするタスクを選んでください');return}
+  if(RO)return deny();
+  if(asChild&&!owns(ref.id))return deny('自分が担当しているタスクの下にだけ子タスクを追加できます');
+  if(!asChild){const par=ref?ref.parent:null;if(!(par?owns(par):isAdmin()))return deny(par?'この階層への追加は、親タスクの担当者か管理者だけができます':'最上位の工程の追加は管理者だけができます')}
+  ensureInput();let t;
+  mutate(()=>{const c=ref?C[ref.id]:null;const start=c?(asChild?c.ps:addW(c.pe,1,c.cal)):todayN;t=newTask(start);
+    if(!ref)state.tasks.push(t);
+    else if(asChild){const wasLeaf=!(kids[ref.id]||[]).length;t.parent=ref.id;ref.collapsed=false;state.tasks.splice(subEnd(ref.id),0,t);if(wasLeaf){t.dur=c.dur;inheritToChild(ref,t,true)}}
+    else{t.parent=ref.parent;state.tasks.splice(subEnd(ref.id),0,t)}
+    sel=t.id});
+  setTimeout(()=>{const i=lin.querySelector(`.row[data-id="${t.id}"] input[data-k=name]`);if(i){i.focus();i.select()}},0);
+}
+function delTask(){
+  if(!sel||!byId[sel])return;const ids=subtreeIds(sel),P=byId[sel].parent;
+  if(!owns(sel))return deny();
+  if(!isAdmin()&&state.tasks.some(t=>!ids.has(t.id)&&!owns(t.id)&&[t.startRule,t.endRule,t.deadline].some(r=>r&&r.refs&&r.refs.some(e=>ids.has(e.ref)))))return deny('ほかの担当のタスクがこのタスクを基準にしているため、削除は管理者に依頼してください');
+  mutate(()=>{for(const t of state.tasks){if(ids.has(t.id))continue;for(const k of['startRule','endRule']){const r=t[k];
+      if(r&&r.type==='rel'&&r.refs.some(e=>ids.has(e.ref))){const keep=r.refs.filter(e=>!ids.has(e.ref));if(keep.length)r.refs=keep;else{const c=C[t.id];t[k]={type:'fixed',date:iso(k==='startRule'?c.ps:c.pe)}}}}}
+    for(const t of state.tasks)if(t.deadline&&t.deadline.refs&&t.deadline.refs.some(e=>ids.has(e.ref))){const d=curOf(t.deadline,calOf(t));t.deadline.refs=t.deadline.refs.filter(e=>!ids.has(e.ref));if(!t.deadline.refs.length&&!t.deadline.date){if(d!=null)t.deadline.date=iso(d);else t.deadline=null}}
+    if(P&&(kids[P]||[]).every(c=>ids.has(c.id))){const p=byId[P],c=C[P];p.startRule={type:'fixed',date:iso(c.ps)};p.anchor='start';p.dur=c.dur;p.durSrc='fixed'}
+    state.tasks=state.tasks.filter(t=>!ids.has(t.id));state.links=state.links.filter(l=>!ids.has(l.from)&&!ids.has(l.to));sel=null});
+  toast('削除しました（Ctrl+Z で元に戻せます）');
+}
+function indent(){const t=sel&&byId[sel];if(!t)return;if(!owns(t.id))return deny();ensureInput();const sib=kids[t.parent||'root'],i=sib.indexOf(t);if(i<=0){toast('直前に同じ階層のタスクがありません');renderAll();return}
+  if(!owns(sib[i-1].id))return deny('移動先の親タスクが担当外のため、管理者に依頼してください');
+  const P=sib[i-1],wasLeaf=!(kids[P.id]||[]).length;mutate(()=>{t.parent=P.id;P.collapsed=false;if(wasLeaf)inheritToChild(P,t,false);sanitize()})}
+function outdent(){const t=sel&&byId[sel];if(!t||!t.parent)return;if(!owns(t.id))return deny();{const gp=byId[t.parent].parent;if(!(gp?owns(gp):isAdmin()))return deny('移動先の階層が担当外のため、管理者に依頼してください')}ensureInput();const P=byId[t.parent];mutate(()=>{const b=extract(t.id);t.parent=P.parent;state.tasks.splice(subEnd(P.id),0,...b);sanitize()})}
+function moveSib(dir){const t=sel&&byId[sel];if(!t)return;if(!(t.parent?owns(t.parent):isAdmin()))return deny('並べ替えは、親タスクの担当者か管理者だけができます');ensureInput();const sib=kids[t.parent||'root'],i=sib.indexOf(t),o=sib[i+dir];if(!o){renderAll();return}
+  mutate(()=>{const b=extract(t.id);const at=dir<0?state.tasks.indexOf(o):subEnd(o.id);state.tasks.splice(at,0,...b)})}
+function moveTo(id,tid,pos){
+  if(subtreeIds(id).has(tid)){toast('自分の下位タスクには移動できません');return}
+  {const np=pos==='child'?tid:byId[tid].parent;if(!owns(id)||!(np?owns(np):isAdmin())){deny('移動元か移動先が担当外のため、管理者に依頼してください');renderAll(true);return}}
+  const wasLeaf=!(kids[tid]||[]).length;
+  mutate(()=>{const t=byId[id],X2=byId[tid];const b=extract(id);
+    if(pos==='before'){t.parent=X2.parent;state.tasks.splice(state.tasks.indexOf(X2),0,...b)}
+    else if(pos==='after'){t.parent=X2.parent;state.tasks.splice(subEnd(tid),0,...b)}
+    else{t.parent=X2.id;X2.collapsed=false;state.tasks.splice(subEnd(tid),0,...b);if(wasLeaf)inheritToChild(X2,t,false)}
+    sanitize()});
+}
+function editCell(id,k,v){
+  const t=byId[id],c=C[id];if(!t)return;
+  if(!owns(id)||(k==='who'&&!isAdmin())){deny(k==='who'&&owns(id)?'担当者の変更は管理者だけができます':null);renderAll(true);return}
+  mutate(()=>{switch(k){
+    case'name':t.name=v;break;
+    case'ps':{const n=parse(v);if(n==null)break;const ns=snapF(n,c.cal);applyPlan(t,ns,addW(ns,c.dur-1,c.cal));break}
+    case'pe':{const n=parse(v);if(n==null)break;let ne=snapB(n,c.cal);if(ne<c.ps)ne=c.ps;applyPlan(t,c.ps,ne);break}
+    case'as':t.as=v;if(!v)t.ae='';break;
+    case'ae':t.ae=v;if(v&&!t.as)t.as=v;if(v&&(+t.prog||0)<100)t.prog=100;break;
+    case'dur':{const d=Math.max(1,Math.round(+v||1));if(t.anchor==='both')applyPlan(t,c.ps,addW(c.ps,d-1,c.cal));else{t.dur=d;t.durSrc='fixed'}break}
+    case'work':{const w=+v;if(w>0){t.work=Math.round(w*100)/100;t.durSrc='work'}break}
+    case'qty':case'daily':{t[k]=v===''?'':+v;if(+t.qty>0&&+t.daily>0&&!(kids[id]||[]).length)t.durSrc='yield';break}
+    case'parties':t.parties=Math.max(1,Math.round(+v||1));break
+    case'prog':t.prog=clamp(Math.round(+v||0),0,100);break;
+    default:t[k]=v}},true);
+}
+function select(id){sel=id;for(const e of lin.querySelectorAll('.row.sel'))e.classList.remove('sel');if(id)lin.querySelector(`.row[data-id="${id}"]`)?.classList.add('sel');renderChart()}
+function setMode(m){if(m&&RO){deny();return}mode.path=m==='path';mode.rel=m==='rel';mode.last=null;updateUI();renderChart();if(m)toast(m==='rel'?'基準にするタスクのバーをクリックしてください':'バーを順にクリックしてください')}
+function pathClick(t){
+  if(!mode.last)mode.last=t.id;
+  else if(mode.last===t.id)mode.last=null;
+  else{addLink(mode.last,t.id);mode.last=t.id}
+  renderChart();
+}
+function addLink(a,b){
+  if(subtreeIds(a).has(b)||subtreeIds(b).has(a)){toast('親子の間にはパスを引けません');return}
+  if(!(owns(a)||owns(b)))return deny('どちらかのタスクの担当者か管理者だけがパスを引けます');
+  const k=state.view.kind,fs=exits(a),ts=entries(b);
+  if(fs.every(f=>ts.every(t=>state.links.some(l=>l.from===f&&l.to===t&&l.kind===k))))return;
+  mutate(()=>{for(const f of fs)for(const t of ts)if(f!==t&&!state.links.some(l=>l.from===f&&l.to===t&&l.kind===k))state.links.push({id:uid(),from:f,to:t,kind:k})});
+  if(fs.length>1||ts.length>1||fs[0]!==a||ts[0]!==b)toast(`親タスクのパスを子タスクに渡しました（${fs.length*ts.length}本）`);
+}
+
+/* ---------- パスのコメント・削除 ---------- */
+function openLink(lid,back){
+  const L=state.links.find(l=>l.id===lid);if(!L)return;
+  openModal(`<h2>パス</h2>
+<p class="relhd">${L.kind==='plan'?'予定パス':'実施パス'}：<b>${esc(nm(L.from))}</b> → <b>${esc(nm(L.to))}</b></p>
+<div class="g2"><label>コメント<input id="l-note" value="${esc(L.note||'')}" placeholder="例：コンクリート養生、立会検査待ち"></label></div>
+<p class="hint">コメントはチャートのパスの線の上に表示されます（表示の「パスのコメント」で切り替え）。</p>
+<div class="cf" id="l-ask" style="display:none"><p><span class="bdg">確認</span>このパスを削除しますか？　関連付け（日程の拘束）はそのまま残ります。</p>
+<div class="mf" style="margin-top:6px"><button class="btn danger" id="l-yes">削除する</button><button class="btn" id="l-no">削除しない</button></div></div>
+<div class="mf"><button class="btn danger" id="l-del">このパスを削除…</button><span class="sp"></span><button class="btn" id="l-cancel">閉じる</button><button class="btn pri" id="l-ok">保存</button></div>`);
+  const fin=()=>{if(back)openDetail(back);else closeModal()};
+  if(!(owns(L.from)||owns(L.to))){$('#l-note').readOnly=true;$('#l-del').style.display='none';$('#l-ok').style.display='none';$('#mbox .hint').textContent='このパスは担当外のため、閲覧のみです。'}
+  $('#l-note').focus();
+  $('#l-note').onkeydown=e=>{if(e.key==='Enter')$('#l-ok').click()};
+  $('#l-cancel').onclick=fin;
+  $('#l-del').onclick=()=>{$('#l-ask').style.display='';$('#l-no').focus()};
+  $('#l-no').onclick=()=>{$('#l-ask').style.display='none'};
+  $('#l-yes').onclick=()=>{mutate(()=>{state.links=state.links.filter(l=>l.id!==lid)});toast('パスを削除しました');fin()};
+  $('#l-ok').onclick=()=>{const v=$('#l-note').value.trim();if(v!==(L.note||''))mutate(()=>{const x=state.links.find(l=>l.id===lid);if(x){if(v)x.note=v;else delete x.note}});fin()};
+}
+
+/* ---------- 関連付け（バーを押した順：基準 → 日付を決めるタスク） ---------- */
+const SIDE={start:'開始日',end:'完了日',deadline:'期限'},ANC={start:'開始日で拘束',end:'完了日で拘束',both:'開始日と完了日の両方で拘束'};
+const MODE={max:'最も遅い日に合わせる（すべての基準を満たしてから）',min:'最も早い日に合わせる（すべての基準に間に合うように）'};
+function relClick(t){
+  if(!mode.last){mode.last=t.id;renderChart();return}
+  if(mode.last===t.id){mode.last=null;renderChart();return}
+  const h=relHard(mode.last,t.id);if(h){toast(h);return}
+  if(!entries(t.id).every(owns)){deny('日付を決めるタスク（2つ目に選んだタスク）の担当者か管理者だけが関連付けできます');mode.last=null;renderChart();return}
+  openRel(mode.last,t.id);
+}
+function relHard(a,b){
+  if(subtreeIds(a).has(b)||subtreeIds(b).has(a))return'親タスクとその下位タスクの間では関連付けできません（親のバーは子のバーを投影したものです）';
+  return'';
+}
+function findPath(a,b){
+  const seen=new Set();
+  const dfs=id=>{if(id===b)return[];if(seen.has(id))return null;seen.add(id);const t=byId[id];if(!t)return null;
+    const ch=kids[id]||[];
+    if(ch.length){for(const c of ch){const p=dfs(c.id);if(p)return[{task:id,type:'child',to:c.id},...p]}return null}
+    for(const k of usedKeys(t)){const r=t[k];if(r&&r.type==='rel')for(const e of r.refs||[]){const p=dfs(e.ref);if(p)return[{task:id,type:'rule',key:k,ref:e.ref,to:e.ref},...p]}}
+    return null};
+  return dfs(a);
+}
+function withSim(fn){const keep=JSON.stringify(state.tasks);try{return fn()}finally{state.tasks=JSON.parse(keep);recompute();ROWS=buildRows()}}
+function dropRef(t,key,ref,date){const r=t&&t[key];if(!r||r.type!=='rel')return;r.refs=r.refs.filter(e=>e.ref!==ref);if(!r.refs.length)t[key]={type:'fixed',date}}
+function applyRel(cfg,eff,brk){
+  for(const[id,key,ref,date]of brk)dropRef(byId[id],key,ref,date);
+  for(const b of cfg.bs){const B=byId[b];if(!B)continue;
+    if(eff['anc:'+b])B.anchor=eff['anc:'+b];
+    const key=cfg.side==='deadline'?'deadline':cfg.side+'Rule',cur=B[key],ne=cfg.as.map(a=>({ref:a,base:cfg.base,offset:cfg.off}));
+    const date=cfg.keepDate&&cur&&cur.date?cur.date:'';
+    if(cur&&cur.type==='rel'&&eff['ex:'+b]!=='replace')B[key]=Object.assign({type:'rel',mode:cfg.mode,refs:[...(cur.refs||[]).filter(e=>!cfg.as.includes(e.ref)),...ne]},date?{date}:{});
+    else B[key]=Object.assign({type:'rel',mode:cfg.mode,refs:ne},date?{date}:{});
+    if(eff['order:'+b])B.anchor=eff['order:'+b];
+  }
+  for(const k in eff)if(k.startsWith('down:')){const t=byId[k.slice(5)];if(t)t.anchor=eff[k]}
+}
+/* ケーススタディ：関連付けで起こり得る矛盾と解消方法
+   1 拘束方法の不一致：完了日拘束のタスクに開始日を関連付ける（逆も）→ 拘束方法を変更
+   2 基準がすでにある：同じ側に別の基準がある → 基準に追加（複数の前工程・後工程）か置き換え
+   3 循環参照：基準側の日程がこのタスクに依存している → 経路上の基準を1つ外す
+   4 工程が成り立たない：両方拘束で完了日＜開始日 → 関連付けた側で拘束
+   5 連動先が成り立たない：連動して動く両方拘束のタスクで完了日＜開始日 → そのタスクを開始日で拘束
+   6 親とその下位タスクの間 → 関連付け不可（親のバーは子の投影のため）
+   親タスクを選んだときは、基準側は親の「出口」の子（後に続く子がない子）、
+   日付を決める側は親の「入口」の子（前に子がない子）に渡す */
+function analyze(cfg,res){
+  const out={conflicts:[],notes:[],preview:[],eff:{},brk:[],ok:false};
+  const before={};for(const id in C)before[id]={ps:C[id].ps,pe:C[id].pe,err:!!C[id].err};
+  const listed=k=>{if(res[k]!=null)out.eff[k]=res[k]};
+  const has=k=>out.conflicts.some(c=>c.key===k);
+  for(const b of cfg.bs){const B=byId[b];
+    if(cfg.side==='start'&&B.anchor==='end'){out.conflicts.push({key:'anc:'+b,msg:`「${nm(b)}」は完了日で拘束されています。開始日を関連付けるには拘束方法を変える必要があります。`,opts:[['start','開始日で拘束に変更（完了日＝開始日＋暦日数）'],['both','開始日と完了日の両方で拘束に変更（暦日数は日付から決まる）']]});listed('anc:'+b)}
+    if(cfg.side==='end'&&B.anchor==='start'){out.conflicts.push({key:'anc:'+b,msg:`「${nm(b)}」は開始日で拘束されています。完了日を関連付けるには拘束方法を変える必要があります。`,opts:[['end','完了日で拘束に変更（開始日＝完了日−暦日数）'],['both','開始日と完了日の両方で拘束に変更（暦日数は日付から決まる）']]});listed('anc:'+b)}
+    const r=B[cfg.side==='deadline'?'deadline':cfg.side+'Rule'];
+    if(r&&r.type==='rel'&&(r.refs||[]).length){const others=r.refs.filter(e=>!cfg.as.includes(e.ref)&&byId[e.ref]);
+      if(others.length){out.conflicts.push({key:'ex:'+b,msg:`「${nm(b)}」の${SIDE[cfg.side]}は、すでに ${others.map(e=>'「'+nm(e.ref)+'」').join('、')} を基準にしています。`,opts:[['add',`基準に追加する（複数の基準のうち${cfg.mode==='min'?'最も早い日':'最も遅い日'}に合わせる）`],['replace','新しい基準に置き換える（既存の基準とその予定パスは外す）']]});listed('ex:'+b)}
+      else out.notes.push(`「${nm(b)}」には同じ基準があるため、基準の日と日数を上書きします。`)}
+    if(r&&r.date&&(cfg.side==='deadline'||(cfg.side==='start'?B.anchor!=='end':B.anchor!=='start')))out.notes.push(cfg.keepDate?`「${nm(b)}」の指定日 ${fmt(parse(r.date))} も候補として残します（${cfg.mode==='min'?'早い方':'遅い方'}を採用）。`:`「${nm(b)}」の${SIDE[cfg.side]}の指定日 ${fmt(parse(r.date))} は外し、関連付けだけで決めます。`);
+  }
+  if(cfg.side!=='deadline')withSim(()=>{for(const b of cfg.bs)for(const a of cfg.as){for(let i=0;i<10;i++){
+    index();const p=findPath(a,b);if(!p)break;
+    const rules=p.filter(e=>e.type==='rule'),e=rules[rules.length-1];
+    const chain=[a,...p.map(x=>x.to)].map(id=>'「'+nm(id)+'」').join(' → ');
+    if(!e){if(!has('cyc-x'))out.conflicts.push({key:'cyc-x',msg:`${chain} と親子関係を通じて日程がつながっているため、循環参照になり関連付けできません。`,opts:[]});break}
+    const key=`cyc:${e.task}:${e.key}:${e.ref}`,d=iso(e.key==='startRule'?before[e.task].ps:before[e.task].pe);
+    if(!has(key))out.conflicts.push({key,msg:`基準側の日程がこのタスクに依存しています（${chain}）。このまま関連付けると循環参照になります。`,opts:[['yes',`「${nm(e.task)}」の${e.key==='startRule'?'開始日':'完了日'}の基準から「${nm(e.ref)}」を外す（ほかに基準がなければ ${fmt(parse(d))} で固定、対応する予定パスも削除）`]]});
+    if(!res[key])break;
+    if(!out.brk.some(x=>x[0]===e.task&&x[1]===e.key&&x[2]===e.ref))out.brk.push([e.task,e.key,e.ref,d]);
+    dropRef(byId[e.task],e.key,e.ref,d);
+  }}});
+  const guard=()=>{for(const c of out.conflicts){if(!c.opts.length||c.ng)continue;const tid=c.key.startsWith('cyc:')?c.key.split(':')[1]:c.key.startsWith('down:')?c.key.slice(5):null;
+    if(tid&&!owns(tid)){c.opts=[];c.ng=true;c.msg+='（担当外のタスクを変更する解消方法のため、管理者に依頼してください）';delete out.eff[c.key]}}};
+  guard();
+  const unresolved=()=>out.conflicts.some(c=>!c.opts.length||res[c.key]==null);
+  if(unresolved())return out;
+  for(let i=0;i<6;i++){
+    const fresh=[];
+    const sim=withSim(()=>{applyRel(cfg,out.eff,out.brk);recompute();
+      const r={bs:{},moved:[],errs:[]};for(const b of cfg.bs)r.bs[b]={...C[b]};
+      for(const id in C){if(cfg.bs.includes(id))continue;const b0=before[id];if(!b0)continue;if(C[id].err&&!b0.err)r.errs.push([id,C[id].err]);if(C[id].ps!==b0.ps||C[id].pe!==b0.pe)r.moved.push(id)}
+      return r});
+    for(const b of cfg.bs){const k='order:'+b;if(sim.bs[b].err&&!has(k))fresh.push({key:k,msg:`このままでは「${nm(b)}」の工程が成り立ちません（${sim.bs[b].err}）。`,opts:[cfg.side==='start'?['start',`開始日で拘束に変更（関連付けた開始日から作業日数 ${byId[b].dur} 日を確保）`]:['end',`完了日で拘束に変更（関連付けた完了日から作業日数 ${byId[b].dur} 日をさかのぼる）`]]})}
+    for(const[id,err]of sim.errs){const k='down:'+id;if(!has(k))fresh.push({key:k,msg:`連動して動く「${nm(id)}」の工程が成り立たなくなります（${err}）。`,opts:[['start','このタスクを開始日で拘束に変更（作業日数を維持）']]})}
+    if(!fresh.length){
+      out.preview=cfg.bs.map(b=>({b,ps:sim.bs[b].ps,pe:sim.bs[b].pe,dur:sim.bs[b].dur,ps0:before[b].ps,pe0:before[b].pe,dl:sim.bs[b].dl,over:sim.bs[b].over}));
+      const mv=sim.moved.filter(id=>!(kids[id]||[]).length);
+      if(mv.length)out.notes.push(`連動して日程が変わるタスク：${mv.length}件（${mv.slice(0,5).map(id=>'「'+nm(id)+'」').join('、')}${mv.length>5?' ほか':''}）`);
+      if(cfg.side==='start'&&cfg.base==='end'&&cfg.bs.some(b=>cfg.as.some(a=>sim.bs[b].ps<=before[a].pe)))out.notes.push('開始日が基準タスクの完了日以前になります（パスは回り込んで赤で表示されます）。');
+      if(cfg.bs.some(b=>byId[b].as))out.notes.push('実績が入力済みのタスクがあります。変わるのは予定だけです。');
+      break}
+    out.conflicts.push(...fresh);for(const c of fresh)listed(c.key);guard();
+    if(unresolved())return out;
+  }
+  out.ok=!unresolved()&&out.preview.length>0;
+  return out;
+}
+function openRel(a,b){
+  const as=exits(a),bs=entries(b),B0=byId[bs[0]];
+  const cfg={a,b,as,bs,side:B0.anchor==='end'?'end':'start',base:'end',off:1,mode:'max',path:true};
+  if(cfg.side==='end')cfg.off=Math.max(1,C[bs[0]].dur);
+  const ex=B0[cfg.side+'Rule'];let modeTouched=false;
+  if(ex&&ex.type==='rel'){cfg.mode=ex.mode||'max';const m=ex.refs.find(e=>as.includes(e.ref));if(m){cfg.base=m.base;cfg.off=+m.offset||0}}
+  let res={};
+  const list=ids=>ids.map(id=>'「'+esc(nm(id))+'」').join('、');
+  const pa=as.length>1||as[0]!==a,pb=bs.length>1||bs[0]!==b;
+  openModal(`<h2>関連付け</h2>
+<p class="relhd">基準 <b>${esc(nm(a))}</b> → 日付を決める <b>${esc(nm(b))}</b></p>
+${pa?`<p class="hint">「${esc(nm(a))}」は親タスクのため、出口の子タスク ${list(as)} を基準にします。</p>`:''}
+${pb?`<p class="hint">「${esc(nm(b))}」は親タスクのため、入口の子タスク ${list(bs)} に関連付けを渡します。</p>`:''}
+<div class="rr">日付を決めるタスクの <select class="fld" id="r-side"><option value="start">開始日</option><option value="end">完了日</option><option value="deadline">期限</option></select> を、基準タスクの
+<select class="fld" id="r-base"><option value="end">完了日</option><option value="start">開始日</option></select> から
+<input class="fld" type="number" id="r-off" style="width:5.5em"> 日 とする</div>
+<div class="rr">基準が複数あるとき <select class="fld" id="r-mode"><option value="max">${MODE.max}</option><option value="min">${MODE.min}</option></select></div>
+<p class="hint">拘束方法：${esc(ANC[B0.anchor])}／作業不能期間：${calOf(B0)?'飛ばす':'飛ばさない'}。完了日から +1日 で翌日（作業不能期間の対象なら期間明けの日）。前工程が複数あり全部終わってから始める場合は「最も遅い日」、後工程が複数あり全部に間に合わせる場合（完了日を後工程の開始日から逆算）は「最も早い日」です。</p>
+<label class="chk" style="margin-top:6px"><input type="checkbox" id="r-path" checked> 予定パスも引く</label>
+<label class="chk" style="margin-top:6px;margin-left:14px" id="r-kd-l"><input type="checkbox" id="r-kd"> すでにある指定日も候補として残す（「前工程の翌日」と「指定日」のどちらか遅い方、など）</label>
+<div id="r-dyn"></div>
+<div class="mf"><button class="btn" id="r-swap">基準と入れ替える</button><span class="sp"></span><button class="btn" id="r-cancel">中止</button><button class="btn pri" id="r-ok">関連付ける</button></div>`);
+  const g=k=>$('#r-'+k);
+  const keyOf=()=>cfg.side==='deadline'?'deadline':cfg.side+'Rule';
+  const kdSync=()=>{const has=bs.some(x=>byId[x][keyOf()]&&byId[x][keyOf()].date);g('kd-l').style.display=has?'':'none';const r0=byId[bs[0]][keyOf()];cfg.keepDate=has&&(cfg.side==='deadline'||!!(r0&&r0.type==='rel'&&r0.date));g('kd').checked=cfg.keepDate};
+  kdSync();g('kd').onchange=()=>{cfg.keepDate=g('kd').checked;draw()};
+  g('side').value=cfg.side;g('base').value=cfg.base;g('off').value=cfg.off;g('mode').value=cfg.mode;
+  const autoMode=()=>{if(modeTouched)return;const cr=byId[bs[0]][keyOf()];cfg.mode=cfg.side==='deadline'?(cr&&cr.mode)||'min':cfg.side==='end'&&cfg.base==='start'?'min':(cr&&cr.type==='rel'?cr.mode||'max':'max');g('mode').value=cfg.mode};
+  const draw=()=>{
+    const r=analyze(cfg,res),open=r.conflicts.filter(c=>!c.opts.length||res[c.key]==null).length;
+    g('dyn').innerHTML=(r.conflicts.length?`<h3>矛盾の確認（${r.conflicts.length}件${open?`・未解消 ${open}件`:'・すべて解消済み'}）</h3>`:'<h3>矛盾の確認</h3><p class="hint">矛盾はありません。</p>')
+      +r.conflicts.map(c=>{const ok=c.opts.length&&res[c.key]!=null;return `<div class="cf${ok?' ok':''}"><p><span class="bdg">${ok?'解消済み':'要対応'}</span>${esc(c.msg)}</p>${c.opts.length?c.opts.map(([v,l])=>`<label class="rd"><input type="${c.opts.length>1?'radio':'checkbox'}" name="cf-${esc(c.key)}" data-cf="${esc(c.key)}" value="${v}"${res[c.key]===v?' checked':''}> <span>${esc(l)}</span></label>`).join(''):'<p class="hint">この組み合わせでは関連付けできません。中止するか、別のタスクを選んでください。</p>'}</div>`}).join('')
+      +`<div class="pv"><b>関連付け後の見込み</b>${r.preview.length?`<ul>${r.preview.map(p=>cfg.side==='deadline'?`<li>「${esc(nm(p.b))}」期限 ${fmt(p.dl)}　予定完了 ${fmt(p.pe)} → ${p.over?`<b style="color:var(--bad)">${p.over}日超過</b>（はみ出した部分を赤い斜線で表示）`:'期限内'}</li>`:`<li>「${esc(nm(p.b))}」予定 ${fmt(p.ps)} 〜 ${fmt(p.pe)}（${p.dur}日）　変更前 ${fmt(p.ps0)} 〜 ${fmt(p.pe0)}${p.over?`　<b style="color:var(--bad)">期限を${p.over}日超過</b>`:''}</li>`).join('')}${r.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:`<p class="hint" style="margin:4px 0 0">矛盾を解消すると表示されます。</p>${r.notes.length?`<ul>${r.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:''}`}</div>`;
+    g('ok').disabled=!r.ok;
+  };
+  g('side').onchange=()=>{cfg.side=g('side').value;res={};
+    if(cfg.side==='deadline'){cfg.base='start';cfg.off=-1;g('base').value='start';g('off').value=-1}
+    else if(cfg.base==='end'){cfg.off=cfg.side==='end'?Math.max(1,C[bs[0]].dur):1;g('off').value=cfg.off}
+    kdSync();autoMode();draw()};
+  g('base').onchange=()=>{cfg.base=g('base').value;autoMode();draw()};
+  g('off').onchange=()=>{cfg.off=Math.round(+g('off').value||0);g('off').value=cfg.off;draw()};
+  g('mode').onchange=()=>{cfg.mode=g('mode').value;modeTouched=true;draw()};
+  g('path').onchange=()=>{cfg.path=g('path').checked};
+  g('dyn').onchange=e=>{const el=e.target;if(!el.dataset.cf)return;const k=el.dataset.cf;if(el.type==='checkbox')res[k]=el.checked?el.value:null;else res[k]=el.value;if(res[k]==null)delete res[k];
+    if(!(k.startsWith('order:')||k.startsWith('down:')))for(const key of Object.keys(res))if(key.startsWith('order:')||key.startsWith('down:'))delete res[key];draw()};
+  g('cancel').onclick=()=>{closeModal();renderChart()};
+  g('swap').onclick=()=>{const h=relHard(b,a);if(h){toast(h);return}closeModal();mode.last=b;openRel(b,a)};
+  g('ok').onclick=()=>{const r=analyze(cfg,res);if(!r.ok){draw();return}
+    const rev=(cfg.side==='end'||cfg.side==='deadline')&&cfg.base==='start';
+    mutate(()=>{const drop=[];
+      for(const b2 of cfg.bs){const cur=byId[b2][cfg.side+'Rule'];if(r.eff['ex:'+b2]==='replace'&&cur&&cur.type==='rel')for(const e of cur.refs)if(!cfg.as.includes(e.ref))drop.push([e.ref,b2])}
+      for(const[id,,ref]of r.brk)drop.push([ref,id]);
+      state.links=state.links.filter(l=>!(l.kind==='plan'&&drop.some(([x,y])=>(l.from===x&&l.to===y)||(l.from===y&&l.to===x))));
+      applyRel(cfg,r.eff,r.brk);
+      if(cfg.path)for(const a2 of cfg.as)for(const b2 of cfg.bs){const f=rev?b2:a2,t=rev?a2:b2;if(!state.links.some(l=>l.from===f&&l.to===t&&l.kind==='plan'))state.links.push({id:uid(),from:f,to:t,kind:'plan'})}});
+    closeModal();mode.last=b;renderChart();toast('関連付けました。続けて次のタスクを選べます')};
+  draw();
+}
+
+/* ---------- チャート操作 ---------- */
+const pt=e=>{const r=csvg.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
+function hit(p,tg){
+  const ri=Math.floor(p.y/RH),row=ROWS[ri];if(!row||p.y<0)return null;
+  const half=(p.y-ri*RH)<HALF?'plan':'act';let t=row.t,c=C[t.id];
+  if(t.collapsed&&(kids[t.id]||[]).length){const ls=leafIds(t.id);let best=null;
+    const tl=tg&&tg.closest&&tg.closest('[data-lid]');if(tl&&ls.includes(tl.dataset.lid))best=tl.dataset.lid;
+    if(!best)for(const l of ls.slice().reverse()){const x=C[l],s0=half==='plan'?x.ps:x.as,e0=half==='plan'?x.pe:x.aeDraw;if(s0==null)continue;if(p.x>=X(s0)-3&&p.x<=X(e0+1)+3){best=l;break}}
+    if(!best)return{t,c,half,type:null};t=byId[best];c=C[best]}
+  const s=half==='plan'?c.ps:c.as,e=half==='plan'?c.pe:c.aeDraw;const res={t,c,half,type:null};
+  if(s==null)return res;
+  const x1=X(s),x2=X(e+1);
+  if(p.x>=x1-3&&p.x<=x2+3){res.type='move';if(!c.parent){const ed=Math.min(7,(x2-x1)/3);if(p.x-x1<ed)res.type='l';else if(x2-p.x<ed)res.type='r'}}
+  return res;
+}
+csvg.addEventListener('pointerdown',e=>{
+  if(e.button!==0)return;const p=pt(e);
+  if(mode.rel){const h=hit(p,e.target);if(h)relClick(h.t);return}
+  if(mode.path){const lkEl=e.target.closest('[data-link]');if(lkEl){openLink(lkEl.dataset.link);return}
+    const h=hit(p,e.target);if(h)pathClick(h.t);return}
+  const h=hit(p,e.target);if(!h){select(null);return}
+  if(sel!==h.t.id)select(h.t.id);
+  if(h.half==='act'&&h.c.parent)return;
+  if(!owns(h.t.id)){if(h.type)drag={deny:true,x0:p.x};return}
+  if(!h.type){if(h.half==='act'&&h.c.as==null&&!h.c.parent){drag={id:h.t.id,half:'act',type:'new',x0:p.x,d0:R.from+Math.floor(p.x/DW),full:snapFull(),pre:snap(),delta:0,moved:false};e.preventDefault()}return}
+  drag={id:h.t.id,half:h.half,type:h.type,x0:p.x,full:snapFull(),pre:snap(),delta:0,moved:false,parent:h.c.parent};e.preventDefault();
+});
+function applyDrag(){
+  state.tasks=JSON.parse(drag.full).tasks;recompute();
+  const t=byId[drag.id],c=C[drag.id],d=drag.delta;
+  if(drag.half==='plan'){
+    if(drag.parent){const sub=subtreeIds(t.id);for(const id of sub)if(!(kids[id]||[]).length)shiftTask(byId[id],d,sub)}
+    else if(drag.type==='move')shiftTask(t,d,null);
+    else if(drag.type==='l'){let ns=d>=0?snapF(c.ps+d,c.cal):snapB(c.ps+d,c.cal);if(ns>c.pe)ns=c.pe;applyPlan(t,ns,c.pe)}
+    else{let ne=d>=0?snapF(c.pe+d,c.cal):snapB(c.pe+d,c.cal);if(ne<c.ps)ne=c.ps;applyPlan(t,c.ps,ne)}
+  }else{
+    const as=parse(t.as),ae=parse(t.ae);
+    if(drag.type==='new'){const a=drag.d0,b=drag.d0+d;t.as=iso(Math.min(a,b));t.ae=iso(Math.max(a,b))}
+    else if(drag.type==='move'){t.as=iso(as+d);if(ae!=null)t.ae=iso(ae+d)}
+    else if(drag.type==='l')t.as=iso(Math.min(as+d,ae??c.aeDraw));
+    else t.ae=iso(Math.max(as,(ae??c.aeDraw)+d));
+  }
+  recompute();ROWS=buildRows();renderLeft();renderChart();
+}
+function showTip(e){
+  const tip=$('#tip'),t=byId[drag.id],c=C[drag.id];if(!t)return;
+  tip.innerHTML=drag.half==='plan'?`予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}（${c.dur}日）`:`実施 ${fmt(c.as)} 〜 ${c.ae!=null?fmt(c.ae):'作業中'}`;
+  tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+16)+'px';
+}
+window.addEventListener('pointermove',e=>{
+  if(sdrag){const w=clamp(sdrag.w+e.clientX-sdrag.x,160,window.innerWidth-120);$('#left').style.width=w+'px';state.view.leftW=w;return}
+  if(rdrag){rowDragMove(e);return}
+  if(!drag){hover(e);return}
+  if(drag.deny){if(Math.abs(pt(e).x-drag.x0)>6){drag=null;deny()}return}
+  const d=Math.round((pt(e).x-drag.x0)/DW);
+  if(d!==drag.delta){drag.delta=d;if(d!==0)drag.moved=true;if(drag.moved){applyDrag();if(rbody.scrollWidth<(R.to-R.from+1)*DW+60){}}}
+  if(drag.moved)showTip(e);
+});
+window.addEventListener('pointerup',()=>{
+  if(sdrag){sdrag=null;saveLocalView();return}
+  if(rdrag){rowDragEnd();return}
+  if(!drag)return;const d=drag;drag=null;$('#tip').style.display='none';if(d.deny)return;
+  if(d.moved){pushUndo(d.pre,snap());markDirty()}
+  renderAll(true);
+});
+function hover(e){
+  if(!e.target.closest||!e.target.closest('#csvg'))return;
+  if(mode.path){csvg.style.cursor=e.target.closest('[data-link]')?'pointer':'crosshair';return}
+  if(mode.rel){csvg.style.cursor='crosshair';return}
+  const h=hit(pt(e),e.target);let cur='';
+  if(h){if(h.type==='l'||h.type==='r')cur='ew-resize';else if(h.type==='move')cur=(h.half==='act'&&h.c.parent)?'default':'grab';else if(h.half==='act'&&h.c.as==null&&!h.c.parent)cur='cell'}
+  csvg.style.cursor=cur;
+}
+csvg.addEventListener('dblclick',e=>{if(mode.path||mode.rel)return;const h=hit(pt(e),e.target);if(h)openDetail(h.t.id)});
+
+/* ---------- 表の操作 ---------- */
+lin.addEventListener('change',e=>{const el=e.target,k=el.dataset.k,id=el.closest('.row')?.dataset.id;if(k&&id)editCell(id,k,el.value)});
+lin.addEventListener('focusin',e=>{const id=e.target.closest('.row')?.dataset.id;if(id&&id!==sel)select(id)});
+lin.addEventListener('click',e=>{const row=e.target.closest('.row');if(!row)return;const id=row.dataset.id;
+  if(e.target.closest('[data-tg]')){const t=byId[id];t.collapsed=!t.collapsed;saveLocalView();renderAll(true);return}
+  if(id!==sel)select(id)});
+lin.addEventListener('dblclick',e=>{if(e.target.closest('.wbs,.grip,.ro')){const id=e.target.closest('.row').dataset.id;openDetail(id)}});
+lin.addEventListener('pointerdown',e=>{const g=e.target.closest('.grip');if(!g||e.button!==0)return;const id=g.closest('.row').dataset.id;e.preventDefault();
+  if(!owns(id)){select(id);deny();return}
+  if(state.view.sort!=='input'){ensureInput();sel=id;renderAll(true)}else select(id);
+  rdrag={id,tid:null,pos:null};document.body.classList.add('dragging')});
+function rowDragMove(e){
+  const r=lbody.getBoundingClientRect(),y=e.clientY-r.top+lbody.scrollTop;
+  const ri=clamp(Math.floor(y/RH),0,ROWS.length-1),f=(y-ri*RH)/RH;
+  const pos=f<.3?'before':f>.7?'after':'child';rdrag.tid=ROWS[ri]?.t.id;rdrag.pos=pos;
+  const ind=$('#dropind');ind.style.display='block';
+  if(pos==='child'){ind.className='box';ind.style.top=ri*RH+'px';ind.style.height=RH+'px'}
+  else{ind.className='line';ind.style.top=((pos==='before'?ri:ri+1)*RH-1)+'px';ind.style.height='0'}
+  if(e.clientY<r.top+24)rbody.scrollTop-=14;else if(e.clientY>r.bottom-24)rbody.scrollTop+=14;
+}
+function rowDragEnd(){const d=rdrag;rdrag=null;$('#dropind').style.display='none';document.body.classList.remove('dragging');if(d.tid&&d.tid!==d.id)moveTo(d.id,d.tid,d.pos)}
+rbody.addEventListener('scroll',()=>{rhead.scrollLeft=rbody.scrollLeft;stickMonths();if(lbody.scrollTop!==rbody.scrollTop)lbody.scrollTop=rbody.scrollTop});
+lbody.addEventListener('scroll',()=>{if(rbody.scrollTop!==lbody.scrollTop)rbody.scrollTop=lbody.scrollTop});
+lbody.addEventListener('wheel',e=>{if(e.shiftKey)return;rbody.scrollTop+=e.deltaY;e.preventDefault()},{passive:false});
+$('#split').addEventListener('pointerdown',e=>{sdrag={x:e.clientX,w:$('#left').getBoundingClientRect().width};e.preventDefault()});
+
+/* ---------- モーダル ---------- */
+function openModal(html){const mb=$('#mbox');mb.onchange=mb.onclick=null;mb.innerHTML=html;$('#modal').classList.add('open');modalOpen=true}
+function closeModal(){$('#modal').classList.remove('open');modalOpen=false}
+$('#modal').addEventListener('pointerdown',e=>{if(e.target.id==='modal')closeModal()});
+function refOptions(id){const sub=subtreeIds(id);const anc=new Set();let p=byId[id]?.parent;while(p){anc.add(p);p=byId[p]?.parent}
+  return FULL.filter(t=>!sub.has(t.id)&&!anc.has(t.id)).map(t=>({id:t.id,label:WBS[t.id]+' '+t.name}))}
+function openDetail(id){
+  const t=byId[id];if(!t)return;const c=C[id],P=c.parent;sel=id;renderChart();
+  const opts=refOptions(id);
+  const work={s:[],e:[],d:[]},modes={s:'max',e:'max',d:'min'},dates={s:'',e:'',d:''};
+  for(const[pre,r]of[['s',t.startRule],['e',t.endRule],['d',t.deadline]]){if(!r)continue;
+    if(r.type==='rel'){work[pre]=(r.refs||[]).filter(e=>byId[e.ref]).map(e=>({...e}));modes[pre]=r.mode||(pre==='d'?'min':'max');dates[pre]=r.date||''}else dates[pre]=r.date||''}
+  const optHTML=v=>opts.length?opts.map(o=>`<option value="${o.id}"${o.id===v?' selected':''}>${esc(o.label)}</option>`).join(''):'<option value="">（選べるタスクがありません）</option>';
+  const rowsHTML=pre=>work[pre].length?work[pre].map((e,i)=>`<div class="rr" style="margin-left:22px"><select class="fld" data-pre="${pre}" data-i="${i}" data-f="ref">${optHTML(e.ref)}</select> の
+<select class="fld" data-pre="${pre}" data-i="${i}" data-f="base"><option value="start"${e.base==='start'?' selected':''}>開始日</option><option value="end"${e.base!=='start'?' selected':''}>完了日</option></select> から
+<input class="fld" type="number" data-pre="${pre}" data-i="${i}" data-f="offset" value="${+e.offset||0}" style="width:5.5em"> 日 <button class="btn" data-rm="${pre}:${i}">外す</button></div>`).join(''):'<p class="hint" style="margin-left:22px">基準はまだありません。「＋基準を追加」で追加します。</p>';
+  const ruleUI=(pre,lg,def,hint)=>{const hasR=work[pre].length>0,hasD=!!dates[pre]||(pre!=='d'&&!hasR);
+    return `<fieldset id="fs-${pre}"><legend>${lg}</legend>
+<div class="rr"><label><input type="checkbox" id="d-${pre}-ud"${hasD?' checked':''}> 日付を指定</label><input class="fld" type="date" id="d-${pre}-date" value="${iso(parse(dates[pre])??def)}"></div>
+<div class="rr"><label><input type="checkbox" id="d-${pre}-ur"${hasR?' checked':''}> 関連タスクを基準にする</label></div>
+<div id="d-${pre}-refs">${rowsHTML(pre)}</div>
+<div class="rr" style="margin-left:22px"><button class="btn" data-add="${pre}">＋基準を追加</button></div>
+<div class="rr">日付と基準が複数あるとき <select class="fld" id="d-${pre}-mode"><option value="max"${modes[pre]==='max'?' selected':''}>${MODE.max}</option><option value="min"${modes[pre]==='min'?' selected':''}>${MODE.min}</option></select></div>
+<p class="hint">${hint}</p></fieldset>`};
+  const lks=state.links.filter(l=>l.from===id||l.to===id);
+  const S=state.settings;
+  openModal(`<h2>${esc(WBS[id])} タスクの詳細</h2>
+<div class="g2"><label>名称（工種・種別・細別）<input id="d-name" value="${esc(t.name)}"></label><label>担当者<input id="d-who" list="dl-who" value="${esc(t.who)}"></label><label>工程<input id="d-proc" list="dl-proc" value="${esc(t.proc)}"></label><label>備考<input id="d-note" value="${esc(t.note)}"></label></div>
+<div class="g2" style="margin-top:8px"><label>規格<input id="d-spec" value="${esc(t.spec)}"></label><label>数量<input id="d-qty" type="number" step="any" min="0" value="${esc(t.qty)}"></label><label>単位<input id="d-unit" value="${esc(t.unit)}"></label></div>
+${P?`<p class="hint">親タスクの日付・日数・進捗度は子タスクから自動で集計されます（予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}、${c.dur}日、${Math.round(c.prog)}%）。</p>`:`
+<h3>工程の拘束</h3>
+<div class="rr"><label><input type="radio" name="anc" value="start"${t.anchor==='start'?' checked':''}> 開始日で拘束（完了日＝開始日＋暦日数）</label></div>
+<div class="rr"><label><input type="radio" name="anc" value="end"${t.anchor==='end'?' checked':''}> 完了日で拘束（開始日＝完了日−暦日数）</label></div>
+<div class="rr"><label><input type="radio" name="anc" value="both"${t.anchor==='both'?' checked':''}> 開始日と完了日の両方で拘束（暦日数は日付から決まる）</label></div>
+<h3>日数の決め方</h3>
+<div class="rr"><label><input type="radio" name="dsrc" value="yield"${t.durSrc==='yield'?' checked':''}> 数量÷日当り施工量で計算</label><label><input type="radio" name="dsrc" value="work"${t.durSrc==='work'?' checked':''}> 施工日数を入力</label><label><input type="radio" name="dsrc" value="fixed"${t.durSrc==='fixed'?' checked':''}> 暦日数を直接入力</label></div>
+<div class="g2" style="margin-top:6px"><label>日当り施工量<input type="number" id="d-daily" step="any" min="0" value="${esc(t.daily)}"></label><label>施工日数<input type="number" id="d-work" step="any" min="0" value="${c.work!=null?f2(c.work):esc(t.work)}"></label><label>班数<input type="number" id="d-pt" min="1" value="${esc(t.parties)}"></label><label>雨休率（空欄＝工事の既定 ${esc(S.koji.rainRate)}）<input type="number" id="d-rate" step="any" min="0" value="${esc(t.rainRate)}"></label><label>暦日数<input type="number" id="d-dur" min="1" value="${c.dur}"></label></div>
+<p class="hint" id="d-calc">${esc(durText(t,c))}</p>
+<div class="rr"><label><input type="checkbox" id="d-rst"${t.restricted!==false?' checked':''}> 作業不能期間（${esc(S.periods.map(p=>p.name).join('、')||'未設定')}）には施工しない</label></div>
+<p class="hint">暦日数＝切り上げ（（施工日数＋雨休日数）÷班数）、雨休日数＝切り上げ（施工日数×雨休率）。土日祝は雨休率に含まれるため、カレンダーでは数えません。準備工・後片付け工など雨休を見込まないものは雨休率を 0 にします。</p>
+${t.buk&&t.buk.length?`<h3>歩掛（${t.buk.length}件）</h3><table class="pt buk"><tbody>${t.buk.map(b=>`<tr><td>${esc(b.code||'')}${b.eda?'<br><small>'+esc(b.eda)+'</small>':''}</td><td>${esc(b.name||'')}<br><small>${esc(b.cond||'')}</small></td><td style="white-space:nowrap">${esc(b.unit||'')}</td><td style="white-space:nowrap">日当り ${esc(b.daily??'')}</td></tr>`).join('')}</tbody></table>`:''}
+${ruleUI('s','開始日の決め方',c.ps,'日付と関連タスクの両方にチェックすると、「前工程が終わった翌日」と「決められた日付」のうち遅い方（最も遅い日）から開始します。「完了日から +1日」で翌日（作業不能期間の対象なら期間明けの日）です。')}
+${ruleUI('e','完了日の決め方',c.pe,'完了日で拘束するときに使います。')}
+${ruleUI('d','期限（任意）',c.dl??c.pe,'期限は日程を動かしません。バーは開始日から作業日数ぶん引き、期限を超えた部分を赤い斜線と破線で示します。日付と関連タスクの両方を使うときは、通常は厳しい方（最も早い日）にします。')}
+<h3>実施</h3>
+<div class="g2"><label>開始日（実績）<input type="date" id="d-as" value="${esc(t.as)}"></label><label>完了日（実績）<input type="date" id="d-ae" value="${esc(t.ae)}"></label><label>進捗度（%）<input type="number" id="d-prog" min="0" max="100" value="${c.prog}"></label></div>`}
+<h3>バーの色</h3>
+<div class="rr"><label>予定 <input type="color" id="d-cp" value="${t.cPlan||(P?S.colors.parent:S.colors.plan)}"></label><label><input type="checkbox" id="d-cpdef"${t.cPlan?'':' checked'}> 既定色</label>
+<span style="width:20px"></span><label>実施 <input type="color" id="d-ca" value="${t.cAct||S.colors.act}"></label><label><input type="checkbox" id="d-cadef"${t.cAct?'':' checked'}> 既定色</label></div>
+<h3>パス</h3>
+${lks.length?`<ul class="lst">${lks.map(l=>`<li><span>${l.kind==='plan'?'予定':'実施'}：${esc(WBS[l.from]+' '+byId[l.from].name)} → ${esc(WBS[l.to]+' '+byId[l.to].name)}${l.note?`<br><small>コメント：${esc(l.note)}</small>`:''}</span><button class="btn" data-el="${l.id}">コメント・削除</button></li>`).join('')}</ul>`:'<p class="hint">このタスクにつながるパスはありません。ツールバーの「パス設定モード」で引けます。</p>'}
+<p class="msg" id="d-msg"></p>
+<div class="mf"><button class="btn danger" id="d-del">このタスクを削除</button><span class="sp"></span><button class="btn" id="d-cancel">閉じる</button><button class="btn pri" id="d-ok">反映</button></div>`);
+  const g=k=>$('#d-'+k);
+  const dsrc=()=>document.querySelector('input[name=dsrc]:checked')?.value||'work';
+  const sync=()=>{const a=document.querySelector('input[name=anc]:checked')?.value;if(!a)return;$('#fs-s').classList.toggle('off',a==='end');$('#fs-e').classList.toggle('off',a==='start');
+    const m=dsrc();g('daily').disabled=m!=='yield';g('work').disabled=m!=='work';g('dur').disabled=a==='both'||m!=='fixed';g('pt').disabled=g('rate').disabled=m==='fixed';
+    const tmp=Object.assign({},t,{durSrc:m,qty:g('qty').value,daily:g('daily').value,work:g('work').value,parties:g('pt').value,rainRate:g('rate').value,dur:g('dur').value});
+    const D=calcDur(tmp);if(m!=='work'&&D.work!=null)g('work').value=f2(D.work);if(a!=='both'&&m!=='fixed')g('dur').value=D.dur;
+    g('calc').textContent=durText(tmp,Object.assign({},D,{parent:false,anchor:a,derr:D.err}))};
+  if(!P){for(const r of document.querySelectorAll('input[name=anc],input[name=dsrc]'))r.addEventListener('change',sync);for(const id of['qty','daily','work','pt','rate','dur'])g(id).addEventListener('input',sync);sync();
+    const box=$('#mbox');
+    box.onchange=e=>{const el=e.target;const m=/^d-([sed])-date$/.exec(el.id);if(m){$('#d-'+m[1]+'-ud').checked=!!el.value;return}if(!el.dataset.pre)return;const it=work[el.dataset.pre][+el.dataset.i];if(it)it[el.dataset.f]=el.dataset.f==='offset'?Math.round(+el.value||0):el.value};
+    box.onclick=e=>{const ad=e.target.closest('[data-add]'),rm=e.target.closest('[data-rm]');if(!ad&&!rm)return;e.preventDefault();
+      if(ad){const pre=ad.dataset.add;work[pre].push({ref:opts[0]?.id||'',base:pre==='d'?'start':'end',offset:pre==='e'?Math.max(1,c.dur):pre==='d'?-1:1});$('#d-'+pre+'-ur').checked=true;$('#d-'+pre+'-refs').innerHTML=rowsHTML(pre)}
+      else{const[pre,i]=rm.dataset.rm.split(':');work[pre].splice(+i,1);$('#d-'+pre+'-refs').innerHTML=rowsHTML(pre)}};}
+  g('cp').addEventListener('input',()=>g('cpdef').checked=false);g('ca').addEventListener('input',()=>g('cadef').checked=false);
+  g('cancel').onclick=closeModal;
+  g('del').onclick=()=>{closeModal();sel=id;delTask()};
+  if(!isAdmin())g('who').readOnly=true;
+  if(!owns(id)){for(const el of $('#mbox').querySelectorAll('input,select,textarea'))el.disabled=true;for(const el of $('#mbox').querySelectorAll('[data-add],[data-rm]'))el.disabled=true;g('ok').style.display='none';g('del').style.display='none';
+    $('#mbox h2').insertAdjacentHTML('afterend',`<p class="hint">${t.who?`担当：${esc(t.who)}。`:''}${RO?'閲覧のみで開いているため、変更できません。':'担当外のタスクのため、閲覧のみです。'}</p>`)}
+  for(const b of document.querySelectorAll('[data-el]'))b.onclick=()=>openLink(b.dataset.el,id);
+  for(const b of document.querySelectorAll('[data-dl]'))b.onclick=()=>{const lid=b.dataset.dl;mutate(()=>{state.links=state.links.filter(l=>l.id!==lid)});openDetail(id)};
+  g('ok').onclick=()=>{
+    const rd=n=>document.querySelector(`input[name="${n}"]:checked`)?.value;let sR,eR,dR,anc;
+    if(!P){anc=rd('anc');
+      const mk=pre=>{const ud=g(pre+'-ud').checked,ur=g(pre+'-ur').checked,seen=new Set();
+        const refs=ur?work[pre].filter(e=>byId[e.ref]&&!seen.has(e.ref)&&seen.add(e.ref)).map(e=>({ref:e.ref,base:e.base,offset:+e.offset||0})):[];
+        const date=ud?g(pre+'-date').value:'';
+        if(!refs.length&&!date)return null;
+        if(!refs.length)return pre==='d'?{type:'rel',mode:'min',refs:[],date}:{type:'fixed',date};
+        return Object.assign({type:'rel',mode:g(pre+'-mode').value,refs},date?{date}:{})};
+      sR=mk('s');eR=mk('e');dR=mk('d');
+      const need=anc==='start'?[['s',sR]]:anc==='end'?[['e',eR]]:[['s',sR],['e',eR]];
+      for(const[k,r]of need){if(!r){g('msg').textContent=`${k==='s'?'開始日':'完了日'}の決め方（日付または関連タスク）を指定してください`;return}
+        if(r.type==='rel'){const bad=r.refs.find(e=>e.ref===id||dependsOn(e.ref,id));if(bad){g('msg').textContent=`「${nm(bad.ref)}」はこのタスクの日程に依存しているため、基準にすると循環参照になります`;return}}}
+      if(!sR)sR=t.startRule&&t.startRule.type?t.startRule:{type:'fixed',date:iso(c.ps)};
+      if(!eR)eR=t.endRule&&t.endRule.type&&(t.endRule.date||t.endRule.refs)?t.endRule:{type:'fixed',date:iso(c.pe)};}
+    mutate(()=>{t.name=g('name').value;t.spec=g('spec').value;t.qty=g('qty').value===''?'':+g('qty').value;t.unit=g('unit').value;if(isAdmin())t.who=g('who').value;t.proc=g('proc').value;t.note=g('note').value;
+      if(!P){t.anchor=anc;t.startRule=sR;t.endRule=eR;t.deadline=dR;t.durSrc=dsrc();t.daily=g('daily').value===''?'':+g('daily').value;if(+g('work').value>0)t.work=Math.round(+g('work').value*100)/100;t.parties=Math.max(1,Math.round(+g('pt').value||1));t.rainRate=g('rate').value===''?'':+g('rate').value;if(anc!=='both'&&t.durSrc==='fixed')t.dur=Math.max(1,Math.round(+g('dur').value||1));t.restricted=g('rst').checked;t.as=g('as').value;t.ae=t.as?g('ae').value:'';t.prog=clamp(Math.round(+g('prog').value||0),0,100)}
+      t.cPlan=g('cpdef').checked?'':g('cp').value;t.cAct=g('cadef').checked?'':g('ca').value});
+    closeModal();
+  };
+}
+function openSettings(){if(!isAdmin())return deny('作業不能期間・色の設定は管理者だけが変更できます');
+  const S=state.settings;const y=ymd(todayN)[0];
+  const hl=yy=>[...jpHolidays(yy).entries()].sort((a,b)=>a[0]-b[0]).map(([n,s])=>`<li>${fmt(n)}（${WD[dow(n)]}） ${esc(s)}</li>`).join('');
+  openModal(`<h2>作業不能期間・色の設定</h2>
+<h3>作業不能期間</h3>
+<p class="hint">「作業不能期間には施工しない」にしたタスク（詳細設定で切り替え）は、この期間を飛ばして日程を組みます。毎年くり返す期間（河川の出水期など）は「毎年」にチェックし、開始年・終了年で適用する年を絞れます。</p>
+<table class="pt"><tbody id="s-per">${S.periods.map((p,i)=>`<tr><td><input class="fld" data-pi="${i}" data-f="name" value="${esc(p.name)}" placeholder="名称（例：河川の出水期）" style="width:11em"></td><td><input class="fld" type="date" data-pi="${i}" data-f="from" value="${esc(p.from)}"></td><td>〜</td><td><input class="fld" type="date" data-pi="${i}" data-f="to" value="${esc(p.to)}"></td><td style="white-space:nowrap"><label class="chk"><input type="checkbox" data-pi="${i}" data-f="yearly"${p.yearly?' checked':''}> 毎年</label></td><td style="white-space:nowrap${p.yearly?'':';opacity:.4'}"><input class="fld" type="number" data-pi="${i}" data-f="y0" value="${esc(p.y0??'')}" placeholder="開始年" style="width:6em"${p.yearly?'':' disabled'}>〜<input class="fld" type="number" data-pi="${i}" data-f="y1" value="${esc(p.y1??'')}" placeholder="終了年" style="width:6em"${p.yearly?'':' disabled'}></td><td><button class="btn" data-pdel="${i}">削除</button></td></tr>`).join('')}</tbody></table>
+<button class="btn" id="s-padd" style="margin-top:6px">＋作業不能期間を追加</button>
+<h3>土日祝の表示</h3>
+<div class="rr"><label><input type="checkbox" id="s-sat"${S.sat?' checked':''}> 土曜日</label><label><input type="checkbox" id="s-sun"${S.sun?' checked':''}> 日曜日</label><label><input type="checkbox" id="s-nat"${S.nat?' checked':''}> 国民の祝日（振替休日を含む）</label><label><input type="checkbox" id="s-week"${state.view.shadeWeek?' checked':''}> チャートに網掛けする</label></div>
+<p class="hint">土日祝は雨休率に含まれる扱いのため、日数の計算には使いません。日付の色分けと網掛けの表示だけに使います。</p>
+<details style="margin-top:10px"><summary>祝日一覧（${y}年・${y+1}年）</summary><ul class="hl">${hl(y)}${hl(y+1)}</ul></details>
+<h3>既定の色</h3>
+<div class="rr"><label>予定バー <input type="color" id="s-c-plan" value="${S.colors.plan}"></label><label>実施バー <input type="color" id="s-c-act" value="${S.colors.act}"></label><label>親タスク <input type="color" id="s-c-parent" value="${S.colors.parent}"></label><label>予定パス <input type="color" id="s-c-linkPlan" value="${S.colors.linkPlan}"></label><label>実施パス <input type="color" id="s-c-linkAct" value="${S.colors.linkAct}"></label></div>
+<p class="hint">タスクごとの色は、行の No. をダブルクリックして開く詳細設定で変えられます。</p>
+<div class="mf"><span class="sp"></span><button class="btn pri" id="s-close">閉じる</button></div>`);
+  const box=$('#mbox');
+  box.onchange=e=>{const el=e.target;
+    if(el.id==='s-week'){state.view.shadeWeek=el.checked;saveLocalView();renderAll(true);return}
+    mutate(()=>{
+    if(el.dataset.pi!=null){const P0=S.periods[+el.dataset.pi],f=el.dataset.f;if(f==='yearly'){P0.yearly=el.checked;if(el.checked&&!P0.y0){P0.y0=ymd(parse(P0.from)??todayN)[0];P0.y1=9999}}else if(f==='y0'||f==='y1')P0[f]=el.value===''?'':+el.value;else P0[f]=el.value}
+    else if(el.id.startsWith('s-c-'))S.colors[el.id.slice(4)]=el.value;
+    else if(el.id==='s-sat')S.sat=el.checked;else if(el.id==='s-sun')S.sun=el.checked;else if(el.id==='s-nat')S.nat=el.checked});
+    if(el.dataset.f==='yearly')openSettings()};
+  box.onclick=e=>{const d=e.target.closest('[data-pdel]');if(d){mutate(()=>S.periods.splice(+d.dataset.pdel,1));openSettings()}
+    if(e.target.id==='s-padd'){mutate(()=>S.periods.push({name:'作業不能期間',from:iso(todayN),to:iso(todayN)}));openSettings()}
+    if(e.target.id==='s-close'){box.onchange=box.onclick=null;closeModal()}};
+}
+/* ---------- 工事情報（XMLの鏡ブロックに対応） ---------- */
+function openKoji(){
+  const K=state.settings.koji,ad=isAdmin(),dis=ad?'':' disabled';
+  const f=(id,l,v,type='text',ex='')=>`<label>${l}<input id="k-${id}" type="${type}" value="${esc(v??'')}"${ex}${dis}></label>`;
+  const k1=parse(K.from),k2=parse(K.to);
+  openModal(`<h2>工事情報</h2>
+<div class="g2">${f('title','工事名',state.title)}${f('place','工事地名',K.place)}</div>
+<div class="g2" style="margin-top:8px">${f('from','工期（自）',K.from,'date')}${f('to','工期（至）',K.to,'date')}<label>工期日数<input id="k-days" value="${k1!=null&&k2!=null?(k2-k1+1)+'日':''}" disabled></label>${f('rate','雨休率（既定）',K.rainRate,'number',' step="any" min="0"')}</div>
+<div class="g2" style="margin-top:8px">${f('jigyo','事業区分',K.jigyo)}${f('kubun','工事区分',K.kubun)}${f('kyokuCode','整備局コード',K.kyokuCode)}${f('kyokuName','整備局',K.kyokuName)}</div>
+<h3>対象工事区分</h3>
+<div class="g2">${f('taishoName','名称',K.taishoName)}${f('A','係数 A',K.A,'number',' step="any"')}${f('b','係数 b',K.b,'number',' step="any"')}${f('prep','準備期間（日）',K.prep,'number')}${f('clean','後片付け期間（日）',K.clean,'number')}</div>
+<p class="hint">雨休率は、施工日数に対して見込む雨天・休日の割合です（例：0.9 → 施工日数10日に対し雨休9日）。タスクごとに変える場合は、そのタスクの詳細設定で入力します。対象工事区分の項目は、XMLへの出力用に保持します。</p>
+${ad?'':'<p class="hint">工事情報の変更は管理者だけができます。</p>'}
+<p class="msg" id="k-msg"></p>
+<div class="mf"><span class="sp"></span><button class="btn" id="k-c">閉じる</button>${ad?'<button class="btn pri" id="k-ok">反映</button>':''}</div>`);
+  const g=k=>$('#k-'+k);
+  $('#mbox').oninput=()=>{const a=parse(g('from').value),b=parse(g('to').value);g('days').value=a!=null&&b!=null?(b-a+1)+'日':''};
+  g('c').onclick=closeModal;
+  if(ad)g('ok').onclick=()=>{const a=parse(g('from').value),b=parse(g('to').value);if(a!=null&&b!=null&&b<a){g('msg').textContent='工期（至）が工期（自）より前になっています';return}
+    const num=id=>g(id).value===''?'':+g(id).value;
+    mutate(()=>{state.title=g('title').value.trim();Object.assign(K,{place:g('place').value.trim(),from:g('from').value,to:g('to').value,rainRate:g('rate').value===''?0:+g('rate').value,jigyo:g('jigyo').value.trim(),kubun:g('kubun').value.trim(),kyokuCode:g('kyokuCode').value.trim(),kyokuName:g('kyokuName').value.trim(),taishoName:g('taishoName').value.trim(),A:num('A'),b:num('b'),prep:num('prep'),clean:num('clean')})});
+    R=null;closeModal();renderAll();toast('工事情報を反映しました')};
+}
+function openIO(){
+  const json=JSON.stringify(curData(),null,1);
+  openModal(`<h2>書き出し・読み込み</h2>
+<h3>書き出し</h3>
+<div class="rr"><button class="btn" id="io-json">JSONファイルで保存</button><button class="btn" id="io-csv">CSVファイルで保存（Excel用）</button><button class="btn" id="io-copy">JSONをコピー</button></div>
+<textarea id="io-text" spellcheck="false">${esc(json)}</textarea>
+<h3>読み込み</h3>
+<p class="hint">JSONファイルを選ぶか、上の欄にJSONを貼り付けて「欄の内容を読み込む」を押してください。今の工程表は置き換わります（元に戻すこともできます）。</p>
+<div class="rr adm"><input type="file" id="io-file" accept=".json,application/json"><button class="btn" id="io-load">欄の内容を読み込む</button></div><p class="hint" style="${isAdmin()?'display:none':''}">読み込み（置き換え）は管理者だけができます。</p>
+<p class="msg" id="io-msg"></p>
+<div class="mf"><span class="sp"></span><button class="btn pri" id="io-close">閉じる</button></div>`);
+  const name=(state.title||'工程表').replace(/[\\/:*?"<>|]/g,'_');
+  const load=txt=>{if(!isAdmin()){deny('読み込みは管理者だけができます');return}try{const o=JSON.parse(txt);if(!o||!Array.isArray(o.tasks))throw 0;mutate(()=>{const f=fill(o);state.title=f.title;state.tasks=f.tasks;state.links=f.links;state.settings=f.settings;Object.assign(state.view,f.view);sel=null});closeModal();R=null;renderAll();toast('読み込みました')}catch(_){$('#io-msg').textContent='JSONを読み取れませんでした'}};
+  $('#io-json').onclick=()=>download(name+'.json',JSON.stringify(curData(),null,1));
+  $('#io-csv').onclick=()=>download(name+'.csv',csvText());
+  $('#io-copy').onclick=async()=>{try{await navigator.clipboard.writeText($('#io-text').value);toast('コピーしました')}catch(_){$('#io-text').select();toast('選択しました。Ctrl+C でコピーしてください')}};
+  $('#io-load').onclick=()=>load($('#io-text').value);
+  $('#io-file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>load(r.result);r.readAsText(f)};
+  $('#io-close').onclick=closeModal;
+}
+
+/* ---------- ツールバー ---------- */
+const on=(id,ev,fn)=>$(id).addEventListener(ev,fn);
+on('#b-add','click',()=>addTask(false));on('#b-child','click',()=>addTask(true));on('#b-del','click',delTask);
+on('#b-in','click',indent);on('#b-out','click',outdent);on('#b-up','click',()=>moveSib(-1));on('#b-down','click',()=>moveSib(1));
+on('#b-detail','click',()=>sel?openDetail(sel):toast('タスクを選んでください'));
+on('#b-undo','click',undo);on('#b-redo','click',redo);on('#b-save','click',saveProject);on('#b-users','click',openUsers);
+on('#b-proj','click',async()=>{if(await confirmLeave())screenProjects()});
+on('#b-me','click',async()=>{if(FS.moved){dirty=false;screenMoved(FS.moved);return}if(!ME){if(PROJ&&!PROJ.local)screenLogin();return}if(await confirmLeave()){ME=null;RO=true;screenLogin()}});
+on('#whob','click',()=>{if(ME){const u=activeUsers().find(x=>x.id===ME.id);openPw(u||ME,false)}});on('#b-set','click',openSettings);on('#b-koji','click',openKoji);on('#b-io','click',openIO);
+on('#b-path','click',()=>setMode(mode.path?null:'path'));on('#b-rel','click',()=>setMode(mode.rel?null:'rel'));
+on('#ptitle','change',e=>{if(!isAdmin()){deny('工事名の変更は管理者だけができます');updateUI();return}mutate(()=>state.title=e.target.value)});
+on('#v-sort','change',e=>{state.view.sort=e.target.value;saveLocalView();renderAll(true)});
+on('#v-kind','change',e=>{state.view.kind=e.target.value;mode.last=null;renderChart()});
+const vt=(id,k)=>on(id,'change',e=>{state.view[k]=e.target.checked;saveLocalView();renderChart()});
+vt('#v-lp','showPlanLinks');vt('#v-la','showActLinks');vt('#v-ln','lblName');vt('#v-ls','lblStart');vt('#v-le','lblEnd');vt('#v-lact','lblAct');vt('#v-lw','lblWait');
+on('#zoom','input',e=>{const d0=R.from+(rbody.scrollLeft+rbody.clientWidth/2)/DW;DW=+e.target.value;state.view.dw=DW;renderHead();renderChart();rbody.scrollLeft=(d0-R.from)*DW-rbody.clientWidth/2});
+on('#zoom','change',()=>saveLocalView());
+const goToday=()=>{rbody.scrollLeft=Math.max(0,X(todayN)-rbody.clientWidth/3)};
+/* 開いたとき：今日が工期外なら工期始から表示 */
+const goStart=()=>{const K=state.settings.koji,a=parse(K.from),b=parse(K.to);if(a!=null&&(todayN<a||(b!=null&&todayN>b)))rbody.scrollLeft=Math.max(0,X(a)-DW*7);else goToday()};
+on('#b-today','click',goToday);
+on('#olv','click',e=>{const b=e.target.closest('[data-lv]');if(b)setLevel(+b.dataset.lv)});
+on('#b-expand','click',()=>setLevel(maxDepth()+1));
+document.addEventListener('keydown',e=>{
+  const tag=document.activeElement?.tagName,typing=/INPUT|SELECT|TEXTAREA/.test(tag),mod=e.ctrlKey||e.metaKey,k=e.key.toLowerCase();
+  if(mod&&k==='s'){e.preventDefault();saveProject();return}
+  if(modalOpen){if(e.key==='Escape')closeModal();return}
+  if(mod&&(k==='z'||k==='y')){
+    const el=document.activeElement;
+    if(typing&&el&&'defaultValue' in el&&el.value!==el.defaultValue)return; /* 入力途中の文字はブラウザ標準の取り消しに任せる */
+    e.preventDefault();if(typing)el.blur();
+    if(k==='y'||e.shiftKey)redo();else undo();return}
+  if(e.key==='Escape'){if(mode.path||mode.rel){if(mode.last){mode.last=null;renderChart()}else setMode(null)}else if(typing)document.activeElement.blur()}
+  else if(e.key==='Delete'&&!typing&&sel)delTask();
+});
+new ResizeObserver(()=>{if(R&&!drag)renderChart()}).observe(rbody);
+
+/* ====================================================================
+   共有フォルダでの運用（ファイルサーバーにプログラム実行能力がない前提）
+   ・Edge/Chrome の File System Access API で共有フォルダを直接読み書き
+   ・1工事＝1ファイル（*.koji.json）、利用者は _利用者.json
+   ・保存時：最新を読み直し、タスク単位で統合（3者比較）→ バックアップ → 書き込み
+   ・保存の瞬間だけ *.saving で排他、15秒ごとにほかの人の更新を確認
+   ==================================================================== */
+const ICON=document.querySelector('link[rel=icon]').getAttribute('href');
+const FS={root:null,name:''};
+let ME=null,RO=true,PROJ=null,USERS=null,pollTimer=null,saving=false;
+const TOKEN=uid(),USERS_FILE='_利用者.json',BK='_backup',EXT='.koji.json';
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function readText(name,dir){try{const f=await (await (dir||FS.root).getFileHandle(name)).getFile();return{text:await f.text(),mod:f.lastModified}}catch(e){if(e&&(e.name==='NotFoundError'||e.name==='TypeMismatchError'))return null;throw e}}
+async function writeText(name,text,dir){const h=await (dir||FS.root).getFileHandle(name,{create:true});const w=await h.createWritable();await w.write(text);await w.close()}
+async function removeFile(name){try{await FS.root.removeEntry(name)}catch(_){}}
+async function listProjects(){
+  const out=[];
+  for await(const[n,h]of FS.root.entries()){if(h.kind!=='file'||!n.endsWith(EXT))continue;
+    const f=await h.getFile();let by='',title='';try{const o=JSON.parse(await f.text());by=o.savedBy||'';title=o.title||''}catch(_){}
+    out.push({file:n,name:n.slice(0,-EXT.length),title,mod:f.lastModified,by})}
+  return out.sort((a,b)=>b.mod-a.mod);
+}
+async function backup(file,text){
+  try{const d=await FS.root.getDirectoryHandle(BK,{create:true}),t=new Date(),base=file.slice(0,-EXT.length);
+    const stamp=`${t.getFullYear()}${p2(t.getMonth()+1)}${p2(t.getDate())}-${p2(t.getHours())}${p2(t.getMinutes())}${p2(t.getSeconds())}`;
+    await writeText(`${base}_${stamp}.json`,text,d);
+    const list=[];for await(const[n,h]of d.entries())if(h.kind==='file'&&n.startsWith(base+'_')&&/^\d{8}-\d{6}\.json$/.test(n.slice(base.length+1)))list.push(n);
+    list.sort();while(list.length>30)await d.removeEntry(list.shift());
+  }catch(e){console.warn('backup',e)}
+}
+/* ---- 前回のフォルダを覚えておく（IndexedDB） ---- */
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open('koji-share',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function idbGet(k){try{const d=await idb();return await new Promise(r=>{const q=d.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)})}catch(_){return null}}
+async function idbSet(k,v){try{const d=await idb();await new Promise(r=>{const tx=d.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=r;tx.onerror=r})}catch(_){}}
+
+/* ---- パスワード（ソルト付きSHA-256を1万回繰り返したハッシュだけを保存） ---- */
+function sha256hex(s){
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  const m=new TextEncoder().encode(s),l=m.length,n=((l+9+63)>>6)<<6,w=new Uint8Array(n);w.set(m);w[l]=0x80;
+  const dv=new DataView(w.buffer),bl=l*8;dv.setUint32(n-4,bl>>>0);dv.setUint32(n-8,Math.floor(bl/4294967296));
+  let h=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];const W=new Uint32Array(64);
+  const rr=(x,k)=>(x>>>k)|(x<<(32-k));
+  for(let o=0;o<n;o+=64){
+    for(let i=0;i<16;i++)W[i]=dv.getUint32(o+i*4);
+    for(let i=16;i<64;i++){const a=W[i-15],b=W[i-2];W[i]=(W[i-16]+(rr(a,7)^rr(a,18)^(a>>>3))+W[i-7]+(rr(b,17)^rr(b,19)^(b>>>10)))|0}
+    let[a,b,c,d,e,f,g,hh]=h;
+    for(let i=0;i<64;i++){const t1=(hh+(rr(e,6)^rr(e,11)^rr(e,25))+((e&f)^(~e&g))+K[i]+W[i])|0,t2=((rr(a,2)^rr(a,13)^rr(a,22))+((a&b)^(a&c)^(b&c)))|0;hh=g;g=f;f=e;e=(d+t1)|0;d=c;c=b;b=a;a=(t1+t2)|0}
+    h=[(h[0]+a)|0,(h[1]+b)|0,(h[2]+c)|0,(h[3]+d)|0,(h[4]+e)|0,(h[5]+f)|0,(h[6]+g)|0,(h[7]+hh)|0];
+  }
+  return h.map(x=>(x>>>0).toString(16).padStart(8,'0')).join('');
+}
+function hashPw(pw,salt){let h=sha256hex(salt+':'+pw);for(let i=0;i<10000;i++)h=sha256hex(h+salt);return h}
+const newSalt=()=>Array.from({length:16},()=>Math.floor(Math.random()*256).toString(16).padStart(2,'0')).join('');
+
+/* ---- 利用者 ---- */
+async function loadUsers(){const r=await readText(USERS_FILE);USERS=r?JSON.parse(r.text):null;return USERS}
+async function updateUsers(fn){const r=await readText(USERS_FILE);const u=r?JSON.parse(r.text):{format:'gantt-users/1',users:[]};const ret=fn(u);if(ret===false)return null;u.updatedAt=Date.now();await writeText(USERS_FILE,JSON.stringify(u,null,1));USERS=u;return u}
+const activeUsers=()=>(USERS&&USERS.users||[]).filter(u=>u.active!==false);
+const ROLE={admin:'管理者',editor:'担当者'};
+
+/* ---- 権限：担当者は「担当者欄が自分」のタスクとその下位だけ。管理者はすべて ---- */
+const isAdmin=()=>!!ME&&!RO&&ME.role==='admin';
+function owns(id){if(!ME||RO)return false;if(ME.role==='admin')return true;let x=byId[id],g=0;while(x&&g++<99){if((x.who||'').trim()===ME.name)return true;x=x.parent?byId[x.parent]:null}return false}
+function deny(m){toast(m||(RO?'閲覧のみで開いています。編集するにはログインしてください':'担当外のタスクのため編集できません'));return true}
+
+/* ---- 画面ごとの表示設定は各PCに保存（共有ファイルには入れない） ---- */
+const LV='koji-view',colKey=()=>'koji-col:'+FS.name+'/'+(PROJ?PROJ.file:'');
+function loadLocalView(){try{return JSON.parse(localStorage.getItem(LV)||'{}')}catch(_){return{}}}
+function saveLocalView(){try{localStorage.setItem(LV,JSON.stringify(state.view));if(PROJ)localStorage.setItem(colKey(),JSON.stringify(state.tasks.filter(t=>t.collapsed).map(t=>t.id)))}catch(_){}}
+function loadCol(){try{return new Set(JSON.parse(localStorage.getItem(colKey())||'[]'))}catch(_){return new Set()}}
+
+/* ---- 工事データ ---- */
+const strip=({collapsed,...r})=>r;
+function curData(){return{format:'koji-share/1',title:state.title,settings:state.settings,tasks:state.tasks.map(strip),links:state.links,history:state.history||[],version:state.version||0,savedAt:state.savedAt||0,savedBy:state.savedBy||''}}
+function canon(o){const f=fill(o);return{title:f.title,settings:f.settings,tasks:f.tasks.map(strip),links:f.links,history:o.history||[],version:o.version||0,savedAt:o.savedAt||0,savedBy:o.savedBy||''}}
+function loadData(obj){
+  const col=state&&state.__file===(PROJ&&PROJ.file)?new Set(state.tasks.filter(t=>t.collapsed).map(t=>t.id)):loadCol();
+  const view=state&&state.view?state.view:null,f=fill(obj);
+  state=f;state.__file=PROJ&&PROJ.file;state.view=view||Object.assign(f.view,loadLocalView());
+  state.history=obj.history||[];state.version=obj.version||0;state.savedAt=obj.savedAt||0;state.savedBy=obj.savedBy||'';
+  for(const t of state.tasks)t.collapsed=col.has(t.id);
+  recompute();
+}
+/* 3者比較による統合：基準（読み込み時）・自分・最新（ほかの人の保存後）。タスク・パスの単位で、自分が変えたものだけを最新に上乗せ */
+function merge3(base0,mine0,theirs0){
+  const base=canon(base0),mine=canon(mine0),theirs=canon(theirs0),conf=[],js=x=>JSON.stringify(x),mp=a=>new Map((a||[]).map(x=>[x.id,x]));
+  const B=mp(base.tasks),M=mp(mine.tasks),T=mp(theirs.tasks);let res=theirs.tasks.map(x=>({...x}));
+  for(const[id,b]of B){const m=M.get(id),t=T.get(id);
+    if(!m){if(t){if(js(t)!==js(b))conf.push(`「${b.name}」はほかの人も変更していましたが、削除しました`);res=res.filter(x=>x.id!==id)}continue}
+    if(js(m)===js(b))continue;
+    if(!t){conf.push(`「${m.name}」はほかの人が削除していたため、あなたの変更は反映されませんでした`);continue}
+    if(js(t)!==js(b)&&js(t)!==js(m))conf.push(`「${m.name}」はほかの人も変更していました（あなたの変更を優先しました）`);
+    res[res.findIndex(x=>x.id===id)]={...m}}
+  const ids=a=>a.map(x=>x.id),common=ids(base.tasks).filter(id=>M.has(id)),mineOrder=ids(mine.tasks).filter(id=>B.has(id));
+  if(js(common)!==js(mineOrder)){
+    const out=[],left=new Map(res.map(x=>[x.id,x]));
+    for(const id of ids(mine.tasks))if(left.has(id)&&B.has(id)){out.push(left.get(id));left.delete(id)}
+    theirs.tasks.forEach((t,i)=>{if(!left.has(t.id))return;let j=i-1;while(j>=0&&!out.some(x=>x.id===theirs.tasks[j].id))j--;const at=j<0?0:out.findIndex(x=>x.id===theirs.tasks[j].id)+1;out.splice(at,0,left.get(t.id));left.delete(t.id)});
+    for(const x of left.values())out.push(x);res=out}
+  mine.tasks.forEach((m,mi)=>{if(B.has(m.id)||T.has(m.id))return;let j=mi-1;while(j>=0&&!res.some(x=>x.id===mine.tasks[j].id))j--;const at=j<0?0:res.findIndex(x=>x.id===mine.tasks[j].id)+1;res.splice(at,0,{...m})});
+  const BL=mp(base.links),ML=mp(mine.links);let links=theirs.links.map(x=>({...x}));
+  for(const[id]of BL)if(!ML.has(id))links=links.filter(l=>l.id!==id);
+  for(const[id,l]of ML){const b=BL.get(id);if(!b){if(!links.some(x=>x.id===id))links.push({...l})}else if(js(b)!==js(l)){const i=links.findIndex(x=>x.id===id);if(i>=0)links[i]={...l}}}
+  const tid=new Set(res.map(x=>x.id));links=links.filter(l=>tid.has(l.from)&&tid.has(l.to));
+  let settings=theirs.settings,title=theirs.title;
+  if(js(mine.settings)!==js(base.settings)){if(js(theirs.settings)!==js(base.settings))conf.push('休日・色の設定はほかの人も変更していました（あなたの設定を優先しました）');settings=mine.settings}
+  if(mine.title!==base.title)title=mine.title;
+  return{data:{...theirs,title,settings,tasks:res,links},conflicts:conf};
+}
+function summarize(base0,mine0){
+  const b=canon(base0),m=canon(mine0),B=new Map(b.tasks.map(x=>[x.id,x])),M=new Map(m.tasks.map(x=>[x.id,x])),js=x=>JSON.stringify(x);
+  const ch=[],ad=[],dl=[];for(const[id,x]of M){const o=B.get(id);if(!o)ad.push(x.name);else if(js(o)!==js(x))ch.push(x.name)}for(const[id,x]of B)if(!M.has(id))dl.push(x.name);
+  const lk=js(b.links)!==js(m.links),st=js(b.settings)!==js(m.settings)||b.title!==m.title;
+  const p=[];const nm3=a=>a.slice(0,3).join('、')+(a.length>3?' ほか':'');
+  if(ch.length)p.push(`変更${ch.length}件（${nm3(ch)}）`);if(ad.length)p.push(`追加${ad.length}件（${nm3(ad)}）`);if(dl.length)p.push(`削除${dl.length}件（${nm3(dl)}）`);if(lk)p.push('パス');if(st)p.push('設定');
+  return p.join('／')||'変更なし';
+}
+async function saveLock(on){
+  const name=PROJ.file+'.saving';
+  if(!on){try{const r=await readText(name);if(r&&JSON.parse(r.text).token===TOKEN)await removeFile(name)}catch(_){}return}
+  for(let i=0;i<30;i++){let ex=null;try{const r=await readText(name);ex=r&&JSON.parse(r.text)}catch(_){}
+    if(ex&&ex.token!==TOKEN&&Date.now()-ex.at<30000){await sleep(400);continue}
+    await writeText(name,JSON.stringify({by:ME.name,at:Date.now(),token:TOKEN}));await sleep(150);
+    try{const r=await readText(name);if(r&&JSON.parse(r.text).token===TOKEN)return}catch(_){}}
+  throw new Error('ほかの人が保存中です。少し待ってからもう一度保存してください');
+}
+async function saveProject(){
+  if(!PROJ||saving)return;
+  if(RO||!ME){toast('閲覧のみで開いているため保存できません');return}
+  if(!dirty){toast('保存する変更はありません');return}
+  {const mv=FS.moved||await readMove();if(mv){FS.moved=mv;onMoved();return}}
+  saving=true;updateUI();let locked=false;
+  try{await saveLock(true);locked=true;
+    {const mv=await readMove();if(mv){FS.moved=mv;throw new Error('共有フォルダが移転されたため、この場所には保存できません')}}
+    const r=await readText(PROJ.file),baseObj=JSON.parse(PROJ.baseText),mineObj=curData();let data=mineObj,conf=[],theirs=null;
+    if(r&&r.text!==PROJ.baseText){theirs=JSON.parse(r.text);const m=merge3(baseObj,mineObj,theirs);data=m.data;conf=m.conflicts}
+    const ref=theirs||baseObj,now=Date.now();
+    data.format='koji-share/1';data.version=(ref.version||0)+1;data.savedAt=now;data.savedBy=ME.name;
+    data.history=[...(ref.history||[]),{at:now,by:ME.name,sum:summarize(baseObj,mineObj)}].slice(-300);
+    const text=JSON.stringify(data,null,1);
+    if(r)await backup(PROJ.file,r.text);
+    await writeText(PROJ.file,text);
+    const chk=await readText(PROJ.file);PROJ.baseText=text;PROJ.mod=chk?chk.mod:now;
+    loadData(data);dirty=false;
+    toast('保存しました'+(theirs?'（ほかの人の更新と統合しました）':''));
+    if(conf.length)showConflicts(conf,'保存');
+  }catch(e){toast('保存できませんでした：'+(e&&e.message||e))}
+  finally{if(locked)await saveLock(false);saving=false;renderAll(true)}
+}
+async function checkRemote(){
+  if(!PROJ||saving||drag||rdrag||modalOpen||document.hidden)return;
+  if(!FS.moved&&!PROJ.local){let mv=null;try{mv=await readMove()}catch(_){}if(mv&&mv.status==='moved'){FS.moved=mv;onMoved();return}}
+  let r;try{r=await readText(PROJ.file)}catch(_){return}
+  if(!r||r.text===PROJ.baseText)return;
+  let theirs;try{theirs=JSON.parse(r.text)}catch(_){return}
+  const who=theirs.savedBy||'ほかの人';
+  if(!dirty){loadData(theirs);PROJ.baseText=r.text;PROJ.mod=r.mod;renderAll(true);toast(`${who}さんの更新を反映しました`);return}
+  const m=merge3(JSON.parse(PROJ.baseText),curData(),theirs);
+  loadData(m.data);PROJ.baseText=r.text;PROJ.mod=r.mod;dirty=!sameAsSaved();renderAll(true);
+  toast(`${who}さんの更新を取り込みました（あなたの未保存の変更はそのまま残っています）`);
+  if(m.conflicts.length)showConflicts(m.conflicts,'取り込み');
+}
+function showConflicts(list,when){openModal(`<h2>${when}時の確認</h2><p class="hint">同じタスクをほかの人も変更していたため、次のように扱いました。前の状態は共有フォルダの「${BK}」に残っています。</p><ul class="lst">${list.map(x=>`<li><span>${esc(x)}</span></li>`).join('')}</ul><div class="mf"><span class="sp"></span><button class="btn pri" id="cf-ok">閉じる</button></div>`);$('#cf-ok').onclick=closeModal}
+function startPoll(){clearInterval(pollTimer);pollTimer=setInterval(checkRemote,15000)}
+function download(name,text){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:name.endsWith('.csv')?'text/csv':'application/json'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500)}
+
+/* ---- 開始画面（フォルダ選択・初期設定・ログイン・工事一覧） ---- */
+function gate(html){$('#gbox').innerHTML=html;$('#gate').classList.add('open')}
+function ungate(){$('#gate').classList.remove('open')}
+const gHead=sub=>`<h1 class="gh ttl"><img src="${ICON}" alt="" class="appicon">工事工程表</h1>${FS.name?`<p class="hint">共有フォルダ：<b>${esc(FS.name)}</b>${ME?`　利用者：<b>${esc(ME.name)}</b>（${ROLE[ME.role]}）`:''}</p>`:''}${sub?`<h2>${sub}</h2>`:''}`;
+async function confirmLeave(){
+  if(!dirty)return true;
+  return new Promise(res=>{openModal(`<h2>保存していない変更があります</h2><p>保存してから移動しますか？</p><div class="mf"><button class="btn danger" id="lv-no">保存せずに移動</button><span class="sp"></span><button class="btn" id="lv-c">キャンセル</button><button class="btn pri" id="lv-y">保存して移動</button></div>`);
+    $('#lv-c').onclick=()=>{closeModal();res(false)};$('#lv-no').onclick=()=>{closeModal();dirty=false;res(true)};$('#lv-y').onclick=async()=>{closeModal();await saveProject();res(!dirty)}});
+}
+async function screenStart(){
+  ME=null;RO=true;PROJ=null;clearInterval(pollTimer);
+  const testfs=new URLSearchParams(location.search).get('testfs');
+  if(testfs==='opfs'){await useRoot(await navigator.storage.getDirectory(),'テスト用フォルダ');return}
+  if(!window.showDirectoryPicker){gate(`${gHead('このブラウザでは共有フォルダを開けません')}<p>Microsoft Edge または Google Chrome で、このファイルを開いてください。</p><p class="hint">閲覧だけなら、工事ファイル（*.koji.json）を選んで表示できます。</p><input type="file" id="g-file" accept=".json">`);
+    $('#g-file').onchange=async e=>{const f=e.target.files[0];if(!f)return;const text=await f.text();PROJ={file:f.name,baseText:text,mod:f.lastModified,local:true};state=null;loadData(JSON.parse(text));ME=null;RO=true;R=null;ungate();renderAll();requestAnimationFrame(goToday)};return}
+  const h=await idbGet('root');
+  gate(`${gHead('共有フォルダを開く')}
+<p>工程表を置く共有フォルダ（例：\\\\fileserver\\共有\\工程管理）を選んでください。同じフォルダを開いた人どうしで工程を共有します。</p>
+<div class="mf" style="justify-content:flex-start">${h?`<button class="btn pri" id="g-last">前回のフォルダ「${esc(h.name)}」を開く</button>`:''}<button class="btn${h?'':' pri'}" id="g-pick">フォルダを選ぶ</button></div>
+<p class="hint">初めて開くときは、ブラウザがフォルダの閲覧と変更の許可を求めます。「ファイルの編集を許可」を選んでください。</p>`);
+  if(h)$('#g-last').onclick=async()=>{try{let p=await h.queryPermission({mode:'readwrite'});if(p!=='granted')p=await h.requestPermission({mode:'readwrite'});if(p==='granted')await useRoot(h);else toast('フォルダへのアクセスが許可されませんでした')}catch(e){toast('前回のフォルダを開けませんでした。もう一度選んでください')}};
+  $('#g-pick').onclick=async()=>{try{const d=await window.showDirectoryPicker({id:'koji-share',mode:'readwrite'});await idbSet('root',d);await useRoot(d)}catch(e){if(e&&e.name!=='AbortError')toast('フォルダを開けませんでした：'+(e.message||e))}};
+}
+async function useRoot(d,label){FS.root=d;FS.name=label||d.name||'共有フォルダ';FS.moved=null;const mv=await readMove();if(mv){screenMoved(mv);return}await loadUsers();if(!USERS||!activeUsers().length)screenSetup();else screenLogin()}
+function screenSetup(){
+  gate(`${gHead('初期設定：管理者の登録')}
+<p>このフォルダにはまだ利用者が登録されていません。最初に管理者を登録します。管理者はすべての工程の編集と、利用者・パスワードの管理ができます。</p>
+<div class="g2"><label>管理者の氏名<input id="s-name" autocomplete="off"></label><label>パスワード<input id="s-pw" type="password" autocomplete="new-password"></label><label>パスワード（確認）<input id="s-pw2" type="password" autocomplete="new-password"></label></div>
+<label class="chk" style="margin-top:10px"><input type="checkbox" id="s-sample" checked> 操作を試すためのサンプル工事を作る</label>
+<p class="msg" id="s-msg"></p><div class="mf"><button class="btn" id="s-back">フォルダを選び直す</button><span class="sp"></span><button class="btn pri" id="s-ok">登録する</button></div>`);
+  $('#s-back').onclick=screenStart;
+  $('#s-ok').onclick=async()=>{const name=$('#s-name').value.trim(),pw=$('#s-pw').value,msg=$('#s-msg');
+    if(!name){msg.textContent='氏名を入力してください';return}if(pw.length<4){msg.textContent='パスワードは4文字以上にしてください';return}if(pw!==$('#s-pw2').value){msg.textContent='確認用のパスワードが一致しません';return}
+    msg.textContent='登録しています…';await sleep(20);
+    const salt=newSalt(),u={id:uid(),name,role:'admin',salt,hash:hashPw(pw,salt),active:true,createdAt:Date.now()};
+    await updateUsers(x=>{x.users.push(u)});
+    if($('#s-sample').checked){const sm=sample();const d=canon(sm);d.title=sm.title+'（サンプル）';d.history=[{at:Date.now(),by:name,sum:'サンプルとして作成'}];d.version=1;d.savedAt=Date.now();d.savedBy=name;await writeText('サンプル_河道掘削工事'+EXT,JSON.stringify(d,null,1))}
+    ME={id:u.id,name:u.name,role:u.role};RO=false;screenProjects()};
+}
+function screenLogin(){
+  ME=null;RO=true;
+  const us=activeUsers(),last=localStorage.getItem('koji-lastuser')||'';
+  gate(`${gHead('ログイン')}
+<div class="g2"><label>利用者<select id="l-user">${us.map(u=>`<option value="${u.id}"${u.id===last?' selected':''}>${esc(u.name)}（${ROLE[u.role]||'担当者'}）</option>`).join('')}</select></label><label>パスワード<input id="l-pw" type="password" autocomplete="current-password"></label></div>
+<p class="msg" id="l-msg"></p>
+<div class="mf"><button class="btn" id="l-ro">ログインせずに閲覧だけする</button><button class="btn" id="l-back">フォルダを変える</button><span class="sp"></span><button class="btn pri" id="l-ok">ログイン</button></div>
+<p class="hint">パスワードを忘れたときは管理者に再設定を依頼してください。</p>`);
+  $('#l-pw').focus();$('#l-pw').onkeydown=e=>{if(e.key==='Enter')$('#l-ok').click()};
+  $('#l-back').onclick=screenStart;
+  $('#l-ro').onclick=()=>{ME=null;RO=true;screenProjects()};
+  $('#l-ok').onclick=async()=>{await loadUsers();const u=activeUsers().find(x=>x.id===$('#l-user').value),pw=$('#l-pw').value;
+    $('#l-msg').textContent='確認しています…';await sleep(20);
+    if(!u||hashPw(pw,u.salt)!==u.hash){$('#l-msg').textContent='パスワードが違います';return}
+    try{localStorage.setItem('koji-lastuser',u.id)}catch(_){}
+    ME={id:u.id,name:u.name,role:u.role};RO=false;screenProjects()};
+}
+async function screenProjects(){
+  PROJ=null;clearInterval(pollTimer);
+  const list=await listProjects();
+  gate(`${gHead('工事を選ぶ')}${FS.moved?`<div class="cf"><p><span class="bdg">移転済み</span>このフォルダは移転済みのため、閲覧のみで表示しています。新しい場所：${esc(FS.moved.to||'')}</p><div class="mf" style="margin-top:6px"><button class="btn pri" id="p-togo">新しい場所へ</button></div></div>`:''}
+${list.length?`<ul class="lst plist">${list.map(p=>`<li><span><b>${esc(p.title||p.name)}</b><br><small>${esc(p.file)}　最終保存 ${new Date(p.mod).toLocaleString('ja-JP')}${p.by?'（'+esc(p.by)+'）':''}</small></span><span style="display:flex;gap:6px">${isAdmin()?`<button class="btn" data-copy="${esc(p.file)}">複写</button>`:''}<button class="btn pri" data-open="${esc(p.file)}">開く</button></span></li>`).join('')}</ul>`:'<p class="hint">このフォルダには工事ファイルがまだありません。</p>'}
+${isAdmin()?`<h3>新しい工事を作る（管理者）</h3><div class="g2"><label>工事名<input id="n-name" placeholder="例：○○川 河道掘削工事"></label></div><p class="msg" id="n-msg"></p><div class="mf" style="justify-content:flex-start"><button class="btn" id="n-ok">作成して開く</button></div>`:''}
+${isAdmin()?`<h3>共有フォルダの移転（管理者）</h3><p class="hint">ファイルサーバーの変更などで保存場所を移すときに使います。データを新しいフォルダへコピーし、古いフォルダには移転先の案内を残します。</p><div class="mf" style="justify-content:flex-start;margin-top:0"><button class="btn" id="p-move">移転の手順へ</button></div>`:''}
+<div class="mf">${FS.moved?'':`<button class="btn" id="p-logout">${ME?'ログアウト':'ログイン画面へ'}</button>`}<span class="sp"></span></div>`);
+  if(FS.moved)$('#p-togo').onclick=()=>screenMoved(FS.moved);
+  if(isAdmin())$('#p-move').onclick=screenMove;
+  for(const b of document.querySelectorAll('[data-open]'))b.onclick=()=>openProject(b.dataset.open);
+  for(const b of document.querySelectorAll('[data-copy]'))b.onclick=()=>screenCopy(b.dataset.copy,list);
+  if(!FS.moved)$('#p-logout').onclick=()=>{ME=null;RO=true;screenLogin()};
+  if(isAdmin())$('#n-ok').onclick=async()=>{const name=$('#n-name').value.trim();if(!name){$('#n-msg').textContent='工事名を入力してください';return}
+    const file=name.replace(/[\\/:*?"<>|]/g,'_')+EXT;if(list.some(p=>p.file===file)){$('#n-msg').textContent='同じ名前の工事ファイルがあります';return}
+    const d=canon({title:name,settings:Object.assign({},sample().settings,{koji:Object.assign({},KOJI0,{from:iso(todayN)}),periods:[]}),tasks:[newTask(todayN)],links:[]});d.version=1;d.savedAt=Date.now();d.savedBy=ME.name;d.history=[{at:d.savedAt,by:ME.name,sum:'新規作成'}];
+    await writeText(file,JSON.stringify(d,null,1));openProject(file)};
+}
+/* ---- 工事の複写（管理者） ---- */
+async function screenCopy(file,list){
+  if(!isAdmin())return deny('複写は管理者だけができます');
+  const r=await readText(file);if(!r){toast('工事ファイルが見つかりません');return}
+  let src;try{src=JSON.parse(r.text)}catch(_){toast('工事ファイルを読み取れませんでした');return}
+  const keep=state;state=null;PROJ=null;loadData(src);const st0=Math.min(...state.tasks.map(t=>C[t.id]?C[t.id].ps:Infinity));state=keep;if(state)recompute();
+  const title=src.title||file.slice(0,-EXT.length);
+  gate(`${gHead('工事の複写')}
+<p>複写元：<b>${esc(title)}</b><br><small>${esc(file)}</small></p>
+<div class="g2"><label>新しい工事名<input id="c-name" value="${esc(title)}のコピー"></label><label>開始日（全体をずらす）<input id="c-start" type="date" value="${isFinite(st0)?iso(st0):''}"></label></div>
+<label class="chk" style="margin-top:10px"><input type="checkbox" id="c-act" checked> 実績（開始日・完了日・進捗度）を消す</label><br>
+<label class="chk" style="margin-top:6px"><input type="checkbox" id="c-note"> 備考とパスのコメントを消す</label><br>
+<label class="chk" style="margin-top:6px"><input type="checkbox" id="c-who"> 担当者欄を空にする（担当は後で割り当て）</label>
+<p class="hint">開始日を変えると、日付を指定しているタスク・期限・休日以外の指定日を同じ日数だけずらします。関連付けで決まるタスクはそれに合わせて動きます。タスク・関連付け・パス・休日の設定はそのまま複写します。</p>
+<p class="msg" id="c-msg"></p>
+<div class="mf"><button class="btn" id="c-back">戻る</button><span class="sp"></span><button class="btn pri" id="c-ok">複写して開く</button></div>`);
+  $('#c-back').onclick=screenProjects;
+  $('#c-ok').onclick=async()=>{
+    const name=$('#c-name').value.trim(),m=$('#c-msg');if(!name){m.textContent='工事名を入力してください';return}
+    const nf=name.replace(/[\/:*?"<>|]/g,'_')+EXT;if((await listProjects()).some(p=>p.file===nf)){m.textContent='同じ名前の工事ファイルがあります';return}
+    const ns=parse($('#c-start').value),delta=isFinite(st0)&&ns!=null?ns-st0:0,sh=d=>d?iso(parse(d)+delta):d;
+    const d=canon(src);d.title=name;
+    for(const t of d.tasks){
+      for(const k of['startRule','endRule','deadline']){const r=t[k];if(r&&r.date)r.date=sh(r.date)}
+      if($('#c-act').checked){t.as='';t.ae='';t.prog=0}else{t.as=sh(t.as);t.ae=sh(t.ae)}
+      if($('#c-note').checked)t.note='';
+      if($('#c-who').checked)t.who='';
+    }
+    if($('#c-note').checked)for(const l of d.links)delete l.note;
+    const now=Date.now();d.version=1;d.savedAt=now;d.savedBy=ME.name;d.history=[{at:now,by:ME.name,sum:`「${title}」から複写${delta?`（${delta>0?'+':''}${delta}日ずらし）`:''}`}];
+    await writeText(nf,JSON.stringify(d,null,1));toast('複写しました');openProject(nf)};
+}
+async function openProject(file){
+  const r=await readText(file);if(!r){toast('工事ファイルが見つかりません');return}
+  let obj;try{obj=JSON.parse(r.text)}catch(_){toast('工事ファイルを読み取れませんでした');return}
+  PROJ={file,baseText:r.text,mod:r.mod};state=null;loadData(obj);fixParentLinks();
+  dirty=false;undoS=[];redoS=[];sel=null;mode.path=mode.rel=false;mode.last=null;R=null;
+  DW=state.view.dw||22;$('#left').style.width=Math.min(state.view.leftW||640,window.innerWidth*.6)+'px';
+  ungate();renderAll();requestAnimationFrame(goStart);startPoll();
+  if(!ME)toast('閲覧のみで開きました（15秒ごとに最新を表示します）');
+  else if(ME.role!=='admin'){const n=state.tasks.filter(t=>owns(t.id)).length;toast(n?`${ME.name}さんの担当タスクは${n}件です（担当外は閲覧のみ）`:`担当者欄が「${ME.name}」のタスクがありません。管理者に担当の設定を依頼してください`)}
+}
+
+/* ---- 利用者管理（管理者）・パスワード変更 ---- */
+async function openUsers(){
+  if(!isAdmin())return deny('管理者だけが使えます');
+  await loadUsers();
+  const cnt=n=>state.tasks.filter(t=>(t.who||'').trim()===n).length,us=activeUsers();
+  openModal(`<h2>利用者管理</h2>
+<p class="hint">担当者は、表の「担当者」欄に自分の氏名が入っているタスク（その下位タスクを含む）だけを編集できます。管理者はすべてのタスク・設定・利用者を編集できます。</p>
+<div class="scroll"><table class="pt ut"><thead><tr><th>氏名</th><th>権限</th><th>メールアドレス</th><th>担当タスク（この工事）</th><th></th></tr></thead><tbody>${us.map(u=>`<tr><td>${esc(u.name)}${u.id===ME.id?'（自分）':''}</td><td><select class="fld" data-role="${u.id}"><option value="editor"${u.role!=='admin'?' selected':''}>担当者</option><option value="admin"${u.role==='admin'?' selected':''}>管理者</option></select></td><td><input class="fld" data-mail="${u.id}" value="${esc(u.mail||'')}" placeholder="お知らせ用（任意）" style="width:14em"></td><td>${cnt(u.name)}件</td><td style="white-space:nowrap"><button class="btn" data-reset="${u.id}">パスワード再設定</button> ${u.id===ME.id?'':`<button class="btn danger" data-udel="${u.id}">削除</button>`}</td></tr>`).join('')}</tbody></table></div>
+<h3>利用者を追加</h3>
+<div class="g2"><label>氏名（表の担当者欄と同じ表記）<input id="u-name" autocomplete="off"></label><label>権限<select id="u-role"><option value="editor">担当者</option><option value="admin">管理者</option></select></label><label>初期パスワード<input id="u-pw" type="password" autocomplete="new-password"></label><label>メールアドレス（任意・お知らせ用）<input id="u-mail" type="email" autocomplete="off"></label></div>
+<div class="mf" style="margin-top:8px;justify-content:flex-start"><button class="btn pri" id="u-add">追加</button></div>
+<p class="msg" id="u-msg"></p>
+<div class="cf" style="border-color:var(--line);background:var(--panel)"><p>パスワードは、担当外のタスクを誤って変えないための仕組みです。共有フォルダに書き込める人はファイルを直接書き換えることもできるため、厳密に守る必要がある場合はフォルダのアクセス権（閲覧だけの人は読み取りのみ）も合わせて設定してください。</p></div>
+<div class="mf"><span class="sp"></span><button class="btn pri" id="u-close">閉じる</button></div>`);
+  const box=$('#mbox'),msg=t=>$('#u-msg').textContent=t;
+  $('#u-close').onclick=()=>{closeModal();renderAll(true)};
+  $('#u-add').onclick=async()=>{const name=$('#u-name').value.trim(),pw=$('#u-pw').value,role=$('#u-role').value;
+    if(!name)return msg('氏名を入力してください');if(pw.length<4)return msg('パスワードは4文字以上にしてください');
+    if(activeUsers().some(u=>u.name===name))return msg('同じ氏名の利用者がいます');
+    msg('登録しています…');await sleep(20);const salt=newSalt();
+    await updateUsers(x=>{x.users.push({id:uid(),name,role,salt,hash:hashPw(pw,salt),mail:$('#u-mail').value.trim(),active:true,createdAt:Date.now()})});
+    toast(`${name}さんを登録しました`);openUsers()};
+  box.onchange=async e=>{const ml=e.target.closest('[data-mail]');if(ml){const id=ml.dataset.mail,v=ml.value.trim();await updateUsers(x=>{const u=x.users.find(y=>y.id===id);if(!u)return false;u.mail=v});toast('メールアドレスを保存しました');return}
+    const s=e.target.closest('[data-role]');if(!s)return;const id=s.dataset.role,role=s.value;
+    const r=await updateUsers(x=>{const admins=x.users.filter(u=>u.active!==false&&u.role==='admin');const u=x.users.find(u=>u.id===id);if(!u)return false;if(u.role==='admin'&&role!=='admin'&&admins.length<=1){msg('管理者が1人もいなくなるため変更できません');return false}u.role=role});
+    if(r){if(id===ME.id){ME.role=role;closeModal();toast('自分の権限を変更しました');renderAll(true);return}toast('権限を変更しました')}openUsers()};
+  box.onclick=async e=>{const rs=e.target.closest('[data-reset]'),dl=e.target.closest('[data-udel]');
+    if(rs){const u=activeUsers().find(x=>x.id===rs.dataset.reset);openPw(u,true)}
+    if(dl){const u=activeUsers().find(x=>x.id===dl.dataset.udel);
+      openModal(`<h2>利用者の削除</h2><p>「${esc(u.name)}」さんを削除しますか？　タスクの担当者欄はそのまま残ります。</p><div class="mf"><span class="sp"></span><button class="btn" id="d-no">やめる</button><button class="btn danger" id="d-yes">削除する</button></div>`);
+      $('#d-no').onclick=openUsers;$('#d-yes').onclick=async()=>{await updateUsers(x=>{const admins=x.users.filter(v=>v.active!==false&&v.role==='admin');if(u.role==='admin'&&admins.length<=1)return false;x.users=x.users.filter(v=>v.id!==u.id)});openUsers()}}};
+}
+function openPw(u,byAdmin){
+  if(!u)return;
+  openModal(`<h2>${byAdmin?'パスワードの再設定':'パスワードの変更'}</h2><p class="relhd">${esc(u.name)}</p>
+<div class="g2">${byAdmin?'':'<label>今のパスワード<input id="w-cur" type="password" autocomplete="current-password"></label>'}<label>新しいパスワード<input id="w-new" type="password" autocomplete="new-password"></label><label>新しいパスワード（確認）<input id="w-new2" type="password" autocomplete="new-password"></label></div>
+<p class="msg" id="w-msg"></p><div class="mf"><span class="sp"></span><button class="btn" id="w-c">やめる</button><button class="btn pri" id="w-ok">変更する</button></div>`);
+  const back=()=>byAdmin?openUsers():closeModal();$('#w-c').onclick=back;
+  $('#w-ok').onclick=async()=>{const m=$('#w-msg'),pw=$('#w-new').value;
+    if(pw.length<4){m.textContent='パスワードは4文字以上にしてください';return}if(pw!==$('#w-new2').value){m.textContent='確認用のパスワードが一致しません';return}
+    m.textContent='変更しています…';await sleep(20);await loadUsers();const cur=activeUsers().find(x=>x.id===u.id);
+    if(!cur){m.textContent='利用者が見つかりません';return}
+    if(!byAdmin&&hashPw($('#w-cur').value,cur.salt)!==cur.hash){m.textContent='今のパスワードが違います';return}
+    const salt=newSalt(),hash=hashPw(pw,salt);await updateUsers(x=>{const v=x.users.find(y=>y.id===u.id);if(v){v.salt=salt;v.hash=hash}});
+    toast('パスワードを変更しました');back()};
+}
+window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
+
+/* ---- 共有フォルダの移転（管理者）：コピー → 検証 → 古い場所に移転案内 → お知らせメール ---- */
+const MOVE_FILE='_移転先.json';
+const selfName=()=>{try{const n=decodeURIComponent(location.pathname.split('/').pop()||'');return /\.html?$/i.test(n)?n:'工事工程表.html'}catch(_){return'工事工程表.html'}};
+async function readMove(dir){const r=await readText(MOVE_FILE,dir);if(!r)return null;try{return JSON.parse(r.text)}catch(_){return{status:'moved',to:'（不明）'}}}
+async function pickDir(){if(new URLSearchParams(location.search).get('testfs')==='opfs'){const r=await navigator.storage.getDirectory();return r.getDirectoryHandle('移転先テスト',{create:true})}return window.showDirectoryPicker({id:'koji-share',mode:'readwrite'})}
+function screenMoved(mv){
+  const moving=mv.status==='moving';PROJ=null;clearInterval(pollTimer);
+  gate(`${gHead(moving?'共有フォルダの移転作業中です':'共有フォルダは移転しました')}
+${moving?`<p>${esc(mv.by||'管理者')}さんが移転作業をしています。しばらく待ってから開き直してください。</p>`:`<p>このフォルダのデータは ${mv.at?new Date(mv.at).toLocaleString('ja-JP'):''} に次の場所へ移りました${mv.by?`（作業者：${esc(mv.by)}）`:''}。</p>
+<p class="newloc">${esc(mv.to||'')}</p>${mv.msg?`<p>${esc(mv.msg)}</p>`:''}
+<p>「新しいフォルダを選ぶ」を押し、上の場所のフォルダを選んでください。ログインの氏名とパスワードは変わりません。</p>`}
+<div class="mf">${moving?'<button class="btn pri" id="mv-retry">開き直す</button>':'<button class="btn pri" id="mv-pick">新しいフォルダを選ぶ</button>'}<button class="btn" id="mv-ro">この場所の古いデータを閲覧だけする</button><span class="sp"></span><button class="btn" id="mv-back">最初の画面へ</button></div>
+<p class="hint">この場所では保存できません。古いデータを開いた場合も閲覧のみです。</p>`);
+  $('#mv-back').onclick=screenStart;
+  $('#mv-ro').onclick=async()=>{FS.moved=mv;ME=null;RO=true;await loadUsers();screenProjects()};
+  if(moving)$('#mv-retry').onclick=()=>useRoot(FS.root,FS.name);
+  else $('#mv-pick').onclick=async()=>{try{const d=await pickDir();
+    if(await d.isSameEntry(FS.root)){toast('移転前と同じフォルダです。新しい場所のフォルダを選んでください');return}
+    if(await readMove(d)){toast('選んだフォルダも移転済みのフォルダです');return}
+    await idbSet('root',d);await useRoot(d)}catch(e){if(e&&e.name!=='AbortError')toast('フォルダを開けませんでした：'+(e.message||e))}};
+}
+function onMoved(){
+  RO=true;updateUI();renderAll(true);const mv=FS.moved;
+  openModal(`<h2>共有フォルダが移転されました</h2><p>管理者が共有フォルダを移転したため、この場所では保存できなくなりました。新しい場所：</p><p class="newloc">${esc(mv.to||'')}</p>
+${dirty?'<p class="msg">保存していない変更があります。「控えを書き出す」でファイルに保存し、新しい場所で入力し直すか、管理者に取り込みを依頼してください。</p>':''}
+<div class="mf">${dirty?'<button class="btn" id="mv-exp">控えを書き出す</button>':''}<span class="sp"></span><button class="btn" id="mv-stay">このまま閲覧する</button><button class="btn pri" id="mv-goto">新しい場所へ</button></div>`);
+  if(dirty)$('#mv-exp').onclick=()=>download((state.title||'工程表')+'_未保存の控え.json',JSON.stringify(curData(),null,1));
+  $('#mv-stay').onclick=closeModal;
+  $('#mv-goto').onclick=()=>{closeModal();dirty=false;screenMoved(mv)};
+}
+async function screenMove(){
+  if(!isAdmin())return deny('共有フォルダの移転は管理者だけができます');
+  gate(`${gHead('共有フォルダの移転（管理者）')}
+<p>今のフォルダのデータ（工事・利用者・バックアップ）を新しい共有フォルダへコピーし、今のフォルダには移転先の案内を残します。移転後、今のフォルダでは誰も保存できなくなります。元のファイルは消さずに残します。</p>
+<ol class="hint"><li>新しい共有フォルダを用意し、利用者の読み書き権限を設定しておきます（中身は空にしておきます）。</li><li>下で移転先のフォルダを選び、場所の表記を入力して「移転する」を押します。作業中にほかの人が保存していれば、終わるのを待ってから始めます。</li><li>終わったら、お知らせメールを作成して送ります。</li></ol>
+<div class="g2"><label>移転先の場所（お知らせに書く表記）<input id="mv-to" placeholder="例：\\\\newserver\\共有\\工程管理"></label><label>ひとこと（任意）<input id="mv-msg" placeholder="例：ファイルサーバー更新のため"></label></div>
+<div class="rr" style="margin-top:10px"><button class="btn" id="mv-pick">移転先のフォルダを選ぶ</button><span id="mv-dest" class="hint" style="margin:0">まだ選んでいません</span></div>
+<label class="chk"><input type="checkbox" id="mv-bk" checked> バックアップ（${BK}）もコピーする</label><br>
+<label class="chk"><input type="checkbox" id="mv-self" checked> このプログラム（${esc(selfName())}）も移転先にコピーする</label>
+<p class="hint">ブラウザの仕組み上、選んだフォルダの正式な場所（\\\\サーバー名\\…）はこの画面から読み取れません。お知らせに使うため、場所の表記は手で入力してください。</p>
+<p class="msg" id="mv-m"></p>
+<div class="mf"><button class="btn" id="mv-back">戻る</button><span class="sp"></span><button class="btn pri" id="mv-go" disabled>移転する</button></div>`);
+  let dest=null;const m=t=>{$('#mv-m').textContent=t};
+  $('#mv-back').onclick=screenProjects;
+  $('#mv-pick').onclick=async()=>{try{const d=await pickDir();
+    if(await d.isSameEntry(FS.root)){m('今と同じフォルダです。別のフォルダを選んでください');return}
+    let has=false;for await(const[n,h]of d.entries())if(h.kind==='file'&&(n.endsWith(EXT)||n===USERS_FILE||n===MOVE_FILE)){has=true;break}
+    if(has){m('選んだフォルダにはすでに工程管理のデータがあります。空のフォルダを選んでください');return}
+    dest=d;$('#mv-dest').textContent='選択中：'+(d.name||'');$('#mv-go').disabled=false;m('')}catch(e){if(e&&e.name!=='AbortError')m('フォルダを開けませんでした：'+(e.message||e))}};
+  $('#mv-go').onclick=async()=>{
+    const to=$('#mv-to').value.trim();if(!to){m('移転先の場所の表記を入力してください（お知らせに使います）');return}
+    if(!dest)return;$('#mv-go').disabled=true;$('#mv-pick').disabled=true;
+    try{
+      await writeText(MOVE_FILE,JSON.stringify({status:'moving',to,by:ME.name,at:Date.now()}));
+      for(let i=0;i<60;i++){let busy=false;
+        for await(const[n,h]of FS.root.entries())if(h.kind==='file'&&n.endsWith('.saving')){try{const o=JSON.parse(await (await h.getFile()).text());if(o.token!==TOKEN&&Date.now()-o.at<30000)busy=true}catch(_){}}
+        if(!busy)break;m('ほかの人の保存が終わるのを待っています…');await sleep(500)}
+      const files=[];for await(const[n,h]of FS.root.entries())if(h.kind==='file'&&(n.endsWith(EXT)||n===USERS_FILE))files.push(n);
+      let cnt=0;
+      for(const n of files){const r=await readText(n);await writeText(n,r.text,dest);const v=await readText(n,dest);if(!v||v.text!==r.text)throw new Error(n+' のコピーを確認できませんでした');cnt++;m(`コピーしています… ${cnt}/${files.length}`)}
+      let bk=0;
+      if($('#mv-bk').checked){let sd=null;try{sd=await FS.root.getDirectoryHandle(BK)}catch(_){}
+        if(sd){const dd=await dest.getDirectoryHandle(BK,{create:true});for await(const[n,h]of sd.entries())if(h.kind==='file'){await writeText(n,await (await h.getFile()).text(),dd);bk++}}}
+      if($('#mv-self').checked)await writeText(selfName(),SELF,dest);
+      const mv={status:'moved',to,msg:$('#mv-msg').value.trim(),by:ME.name,at:Date.now(),projects:files.filter(n=>n.endsWith(EXT)).length};
+      await writeText('_移転元.json',JSON.stringify({from:FS.name,at:mv.at,by:ME.name},null,1),dest);
+      await writeText(MOVE_FILE,JSON.stringify(mv,null,1));
+      const me=ME;await idbSet('root',dest);FS.root=dest;FS.name=dest.name||'新しいフォルダ';FS.moved=null;await loadUsers();ME=me;RO=false;
+      screenMoveDone(mv,bk);
+    }catch(e){await removeFile(MOVE_FILE);m('移転できませんでした：'+(e&&e.message||e)+'（今のフォルダはそのまま使えます）');$('#mv-go').disabled=false;$('#mv-pick').disabled=false}
+  };
+}
+function mailText(mv){
+  return `各位
+
+工事工程表の共有フォルダを移転しました。
+
+■ 新しい場所
+${mv.to}
+
+■ 移転日時
+${new Date(mv.at).toLocaleString('ja-JP')}（作業者：${mv.by}）
+${mv.msg?`\n■ 理由\n${mv.msg}\n`:''}
+■ 切り替え方法（各自1回だけ）
+1. 新しい場所にある「${selfName()}」を Edge で開きます。
+2. 「フォルダを選ぶ」を押し、上の新しい場所のフォルダを選びます。
+   （ブラウザがフォルダの許可を求めたら「ファイルの編集を許可」を選びます）
+3. いつもの氏名とパスワードでログインします（変更はありません）。
+
+古い場所を開いた場合も移転の案内が表示されますが、古い場所では保存できません。
+不明な点は ${mv.by} までお問い合わせください。`;
+}
+function screenMoveDone(mv,bk){
+  const mails=activeUsers().map(u=>(u.mail||'').trim()).filter(Boolean),sub='【工程管理】共有フォルダの移転のお知らせ';
+  gate(`${gHead('移転が完了しました')}
+<p>工事 ${mv.projects}件・利用者の情報${bk?`・バックアップ ${bk}件`:''}を新しいフォルダへコピーしました。古いフォルダには移転先の案内を残しています（以後、古い場所では保存できません）。</p>
+<p class="newloc">${esc(mv.to)}</p>
+<h3>お知らせメール</h3>
+<div class="g2"><label>宛先${mails.length?'':'（利用者管理でメールアドレスを登録すると自動で入ります）'}<input id="ml-to" value="${esc(mails.join('; '))}"></label><label>件名<input id="ml-sub" value="${esc(sub)}"></label></div>
+<textarea id="ml-body" spellcheck="false" style="width:100%;height:260px;margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--field);color:var(--ink);font:13px/1.6 inherit">${esc(mailText(mv))}</textarea>
+<div class="mf" style="justify-content:flex-start"><button class="btn pri" id="ml-open">メールを作成（メールソフトが開きます）</button><button class="btn" id="ml-copy">本文をコピー</button></div>
+<p class="hint">送信はメールソフトから行ってください。この画面から自動では送信しません。宛先が多いとメールソフトに渡せないことがあるため、その場合は「本文をコピー」を使ってください。</p>
+<div class="mf"><span class="sp"></span><button class="btn" id="ml-next">新しいフォルダで工事一覧へ</button></div>`);
+  $('#ml-open').onclick=()=>{const to=$('#ml-to').value.split(/[;,\s]+/).filter(Boolean).join(',');
+    const url=`mailto:${to}?subject=${encodeURIComponent($('#ml-sub').value)}&body=${encodeURIComponent($('#ml-body').value.replace(/\n/g,'\r\n'))}`;
+    const a=document.createElement('a');a.href=url;document.body.appendChild(a);a.click();a.remove()};
+  $('#ml-copy').onclick=async()=>{try{await navigator.clipboard.writeText($('#ml-body').value);toast('本文をコピーしました')}catch(_){$('#ml-body').select();toast('選択しました。Ctrl+C でコピーしてください')}};
+  $('#ml-next').onclick=screenProjects;
+}
+
+/* ---------- 起動 ---------- */
+state=fill({title:'',tasks:[],links:[]});recompute();
+screenStart();
+}
+</script>
+</body>
+</html>
