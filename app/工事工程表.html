@@ -221,7 +221,7 @@ table.ut td{border-top:1px solid var(--line2)}
       <button class="btn" id="b-in" title="直前のタスクの子にする">下の階層へ →</button>
       <button class="btn" id="b-up" title="上へ">↑</button>
       <button class="btn" id="b-down" title="下へ">↓</button>
-      <button class="btn" id="b-detail">詳細設定</button>
+      <button class="btn" id="b-detail" title="選んでいるタスクの詳細設定（バーの右クリック・ダブルクリック、表の No. のダブルクリックでも開きます）">詳細設定</button>
       <button class="btn danger" id="b-del">削除</button>
     </div>
     <div class="grp"><span class="gl">アウトライン</span><span id="olv" class="grp"></span><button class="btn" id="b-expand" title="すべての階層を開く">すべて展開</button></div>
@@ -1453,6 +1453,8 @@ function hover(e){
   csvg.style.cursor=cur;
 }
 csvg.addEventListener('dblclick',e=>{if(mode.path||mode.rel)return;const h=hit(pt(e),e.target);if(h)openDetail(h.t.id)});
+/* 右クリック：バーの上ならそのバーのタスクの詳細設定を開く（畳んだ行に子のバーが並んでいるときは、押したバーのタスク）。バーの外はブラウザのメニューのまま */
+csvg.addEventListener('contextmenu',e=>{if(drag)return;const h=hit(pt(e),e.target);if(!h||!h.type)return;e.preventDefault();if(mode.last){mode.last=null}select(h.t.id);openDetail(h.t.id)});
 
 /* ---------- 表の操作 ---------- */
 lin.addEventListener('change',e=>{const el=e.target,k=el.dataset.k,id=el.closest('.row')?.dataset.id;if(k&&id)editCell(id,k,el.value)});
