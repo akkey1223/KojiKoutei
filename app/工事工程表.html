@@ -1459,6 +1459,9 @@ function applyRel(cfg,eff,brk){
 function analyze(cfg,res){
   const out={conflicts:[],notes:[],preview:[],eff:{},brk:[],ok:false};
   const before={};for(const id in C)before[id]={ps:C[id].ps,pe:C[id].pe,err:!!C[id].err};
+  /* 同じ2つの工程の間に逆向きの関連付けがあれば外す（向きを変えて付け直すとき） */
+  if(cfg.side!=='deadline')for(const b of cfg.bs)for(const a of cfg.as){const A=byId[a];for(const k of['startRule','endRule']){const r=A&&A[k];
+    if(r&&r.type==='rel'&&(r.refs||[]).some(e=>e.ref===b)&&before[a]){out.brk.push([a,k,b,iso(k==='startRule'?before[a].ps:before[a].pe)]);out.notes.push(`逆向きの関連付け（「${nm(a)}」の${k==='startRule'?'開始日':'完了日'} ← 「${nm(b)}」）は外します。`)}}}
   const listed=k=>{if(res[k]!=null)out.eff[k]=res[k]};
   const has=k=>out.conflicts.some(c=>c.key===k);
   for(const b of cfg.bs){const B=byId[b];
@@ -1470,7 +1473,7 @@ function analyze(cfg,res){
       else out.notes.push(`「${nm(b)}」には同じ基準があるため、基準の日と日数を上書きします。`)}
     if(r&&r.date&&(cfg.side==='deadline'||(cfg.side==='start'?B.anchor!=='end':B.anchor!=='start')))out.notes.push(cfg.keepDate?`「${nm(b)}」の指定日 ${fmt(parse(r.date))} も候補として残します（${cfg.mode==='min'?'早い方':'遅い方'}を採用）。`:`「${nm(b)}」の${SIDE[cfg.side]}の指定日 ${fmt(parse(r.date))} は外し、関連付けだけで決めます。`);
   }
-  if(cfg.side!=='deadline')withSim(()=>{for(const b of cfg.bs)for(const a of cfg.as){for(let i=0;i<10;i++){
+  if(cfg.side!=='deadline')withSim(()=>{for(const[id,key,ref,date]of out.brk)dropRef(byId[id],key,ref,date);for(const b of cfg.bs)for(const a of cfg.as){for(let i=0;i<10;i++){
     index();const p=findPath(a,b);if(!p)break;
     const rules=p.filter(e=>e.type==='rule'),e=rules[rules.length-1];
     const chain=[a,...p.map(x=>x.to)].map(id=>'「'+nm(id)+'」').join(' → ');
@@ -1509,11 +1512,16 @@ function analyze(cfg,res){
 }
 function openRel(a,b){
   const as=exits(a),bs=entries(b),B0=byId[bs[0]];
-  const cfg={a,b,as,bs,side:B0.anchor==='end'?'end':'start',base:'end',off:1,mode:'max',path:true};
+  const cfg={a,b,as,bs,side:B0.anchor==='end'?'end':'start',base:'end',off:1,mode:'max',path:true,dir:'fwd'};
+  /* 動かす工程：先の工程（A）がほかに何にも拘束されておらず、後の工程（B）が拘束されていれば、A を B に吸着させる（逆算） */
+  const tied=id=>{const t=byId[id],c=C[id];if(!t)return false;return!!(t.pin||t.frame||(c&&c.back)||usedKeys(t).some(k=>{const r=t[k];return r&&r.type==='rel'&&(r.refs||[]).some(e=>byId[e.ref]&&!as.includes(e.ref)&&!bs.includes(e.ref))}))};
+  if(!as.some(tied)&&bs.some(tied))cfg.dir='rev';
+  const E=()=>cfg.dir==='rev'&&cfg.side!=='deadline'?Object.assign({},cfg,{as:cfg.bs,bs:cfg.as,side:cfg.base,base:cfg.side,off:-cfg.off,mode:'min',keepDate:false}):cfg;
+  const presetAnc=()=>{if(cfg.dir!=='rev')return;const e=E();for(const x of e.bs){const an=byId[x].anchor;if(e.side==='end'&&an==='start')res['anc:'+x]='end';if(e.side==='start'&&an==='end')res['anc:'+x]='start'}};
   if(cfg.side==='end')cfg.off=Math.max(1,C[bs[0]].dur);
   const ex=B0[cfg.side+'Rule'];let modeTouched=false;
   if(ex&&ex.type==='rel'){cfg.mode=ex.mode||'max';const m=ex.refs.find(e=>as.includes(e.ref));if(m){cfg.base=m.base;cfg.off=+m.offset||0}}
-  let res={};
+  let res={};presetAnc();
   const list=ids=>ids.map(id=>'「'+esc(nm(id))+'」').join('、');
   const pa=as.length>1||as[0]!==a,pb=bs.length>1||bs[0]!==b;
   openModal(`<h2>関連付け</h2>
@@ -1523,6 +1531,7 @@ ${pb?`<p class="hint">「${esc(nm(b))}」は親タスクのため、入口の子
 <div class="rr">日付を決めるタスクの <select class="fld" id="r-side"><option value="start">開始日</option><option value="end">完了日</option><option value="deadline">期限</option></select> を、基準タスクの
 <select class="fld" id="r-base"><option value="end">完了日</option><option value="start">開始日</option></select> から
 <input class="fld" type="number" id="r-off" style="width:5.5em"> 日 とする</div>
+<div class="rr" id="r-dirrow"><b>動かす工程</b>　<label><input type="radio" name="r-dir" value="fwd"${cfg.dir==='fwd'?' checked':''}> 「${esc(byId[b]?.name||'')}」を「${esc(byId[a]?.name||'')}」に合わせる（順算）</label><label><input type="radio" name="r-dir" value="rev"${cfg.dir==='rev'?' checked':''}> 「${esc(byId[a]?.name||'')}」を「${esc(byId[b]?.name||'')}」に吸着させる（逆算）</label></div>
 <div class="rr">基準が複数あるとき <select class="fld" id="r-mode"><option value="max">${MODE.max}</option><option value="min">${MODE.min}</option></select></div>
 <p class="hint">拘束方法：${esc(ANC[B0.anchor])}／作業不能期間：${calOf(B0)?'飛ばす':'飛ばさない'}。完了日から +1日 で翌日（作業不能期間の対象なら期間明けの日）。前工程が複数あり全部終わってから始める場合は「最も遅い日」、後工程が複数あり全部に間に合わせる場合（完了日を後工程の開始日から逆算）は「最も早い日」です。</p>
 <label class="chk" style="margin-top:6px"><input type="checkbox" id="r-path" checked> 予定パスも引く</label>
@@ -1536,14 +1545,15 @@ ${pb?`<p class="hint">「${esc(nm(b))}」は親タスクのため、入口の子
   g('side').value=cfg.side;g('base').value=cfg.base;g('off').value=cfg.off;g('mode').value=cfg.mode;
   const autoMode=()=>{if(modeTouched)return;const cr=byId[bs[0]][keyOf()];cfg.mode=cfg.side==='deadline'?(cr&&cr.mode)||'min':cfg.side==='end'&&cfg.base==='start'?'min':(cr&&cr.type==='rel'?cr.mode||'max':'max');g('mode').value=cfg.mode};
   const draw=()=>{
-    const r=analyze(cfg,res),open=r.conflicts.filter(c=>!c.opts.length||res[c.key]==null).length;
+    const r=analyze(E(),res),open=r.conflicts.filter(c=>!c.opts.length||res[c.key]==null).length;
+    g('dirrow').style.display=cfg.side==='deadline'?'none':'';
     const SN={start:'開始日',end:'完了日',deadline:'期限'};
-    g('dyn').innerHTML=`<p class="relhd" style="margin-top:10px">「${esc(nm(a))}」の<b>${SN[cfg.base]}</b> ${cfg.off>=0?'+':''}${cfg.off}日 → 「${esc(nm(b))}」の<b>${SN[cfg.side]}</b></p>`+(r.conflicts.length?`<h3>矛盾の確認（${r.conflicts.length}件${open?`・未解消 ${open}件`:'・すべて解消済み'}）</h3>`:'<h3>矛盾の確認</h3><p class="hint">矛盾はありません。</p>')
+    g('dyn').innerHTML=`<p class="relhd" style="margin-top:10px">「${esc(nm(a))}」の<b>${SN[cfg.base]}</b> ${cfg.off>=0?'+':''}${cfg.off}日 → 「${esc(nm(b))}」の<b>${SN[cfg.side]}</b>　<small>${cfg.dir==='rev'&&cfg.side!=='deadline'?`（「${esc(nm(a))}」が動く：逆算）`:`（「${esc(nm(b))}」が動く：順算）`}</small></p>`+(r.conflicts.length?`<h3>矛盾の確認（${r.conflicts.length}件${open?`・未解消 ${open}件`:'・すべて解消済み'}）</h3>`:'<h3>矛盾の確認</h3><p class="hint">矛盾はありません。</p>')
       +r.conflicts.map(c=>{const ok=c.opts.length&&res[c.key]!=null;return `<div class="cf${ok?' ok':''}"><p><span class="bdg">${ok?'解消済み':'要対応'}</span>${esc(c.msg)}</p>${c.opts.length?c.opts.map(([v,l])=>`<label class="rd"><input type="${c.opts.length>1?'radio':'checkbox'}" name="cf-${esc(c.key)}" data-cf="${esc(c.key)}" value="${v}"${res[c.key]===v?' checked':''}> <span>${esc(l)}</span></label>`).join(''):'<p class="hint">この組み合わせでは関連付けできません。中止するか、別のタスクを選んでください。</p>'}</div>`}).join('')
       +`<div class="pv"><b>関連付け後の見込み</b>${r.preview.length?`<ul>${r.preview.map(p=>cfg.side==='deadline'?`<li>「${esc(nm(p.b))}」期限 ${fmt(p.dl)}　予定完了 ${fmt(p.pe)} → ${p.over?`<b style="color:var(--bad)">${p.over}日超過</b>（はみ出した部分を赤い斜線で表示）`:'期限内'}</li>`:`<li>「${esc(nm(p.b))}」予定 ${fmt(p.ps)} 〜 ${fmt(p.pe)}（${p.dur}日）　変更前 ${fmt(p.ps0)} 〜 ${fmt(p.pe0)}${p.over?`　<b style="color:var(--bad)">期限を${p.over}日超過</b>`:''}</li>`).join('')}${r.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:`<p class="hint" style="margin:4px 0 0">矛盾を解消すると表示されます。</p>${r.notes.length?`<ul>${r.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:''}`}</div>`;
     g('ok').disabled=!r.ok;
   };
-  g('side').onchange=()=>{cfg.side=g('side').value;res={};
+  g('side').onchange=()=>{cfg.side=g('side').value;res={};presetAnc();
     if(cfg.side==='deadline'){cfg.base='start';cfg.off=-1;g('base').value='start';g('off').value=-1}
     else if(cfg.base==='end'){cfg.off=cfg.side==='end'?Math.max(1,C[bs[0]].dur):1;g('off').value=cfg.off}
     kdSync();autoMode();draw()};
@@ -1551,6 +1561,7 @@ ${pb?`<p class="hint">「${esc(nm(b))}」は親タスクのため、入口の子
   g('off').onchange=()=>{cfg.off=Math.round(+g('off').value||0);g('off').value=cfg.off;draw()};
   g('mode').onchange=()=>{cfg.mode=g('mode').value;modeTouched=true;draw()};
   g('path').onchange=()=>{cfg.path=g('path').checked};
+  for(const el of document.querySelectorAll('input[name=r-dir]'))el.onchange=()=>{cfg.dir=el.value;res={};presetAnc();draw()};
   g('dyn').onchange=e=>{const el=e.target;if(!el.dataset.cf)return;const k=el.dataset.cf;if(el.type==='checkbox')res[k]=el.checked?el.value:null;else res[k]=el.value;if(res[k]==null)delete res[k];
     if(!(k.startsWith('order:')||k.startsWith('down:')))for(const key of Object.keys(res))if(key.startsWith('order:')||key.startsWith('down:'))delete res[key];draw()};
   g('cancel').onclick=()=>{closeModal();renderChart()};
@@ -1560,13 +1571,13 @@ ${pb?`<p class="hint">「${esc(nm(b))}」は親タスクのため、入口の子
     e.preventDefault();if(el===g('off')){cfg.off=Math.round(+g('off').value||0);g('off').value=cfg.off;draw()}
     if(g('ok').disabled){toast('矛盾が解消されていないため、まだ関連付けできません');return}g('ok').click()};
   $('#mbox').tabIndex=-1;setTimeout(()=>{if(!$('#mbox').contains(document.activeElement))$('#mbox').focus({preventScroll:true})},0);
-  g('ok').onclick=()=>{const r=analyze(cfg,res);if(!r.ok){draw();return}
+  g('ok').onclick=()=>{const EC=E(),r=analyze(EC,res);if(!r.ok){draw();return}
     const rev=(cfg.side==='end'||cfg.side==='deadline')&&cfg.base==='start';
     mutate(()=>{const drop=[];
-      for(const b2 of cfg.bs){const cur=byId[b2][cfg.side+'Rule'];if(r.eff['ex:'+b2]==='replace'&&cur&&cur.type==='rel')for(const e of cur.refs)if(!cfg.as.includes(e.ref))drop.push([e.ref,b2])}
+      for(const b2 of EC.bs){const cur=byId[b2][EC.side+'Rule'];if(r.eff['ex:'+b2]==='replace'&&cur&&cur.type==='rel')for(const e of cur.refs)if(!EC.as.includes(e.ref))drop.push([e.ref,b2])}
       for(const[id,,ref]of r.brk)drop.push([ref,id]);
       state.links=state.links.filter(l=>!(l.kind==='plan'&&drop.some(([x,y])=>(l.from===x&&l.to===y)||(l.from===y&&l.to===x))));
-      applyRel(cfg,r.eff,r.brk);
+      applyRel(EC,r.eff,r.brk);
       const how=rev?'es':(cfg.base==='start'?'s':'e')+(cfg.side==='end'?'e':'s');
       if(cfg.path)for(const a2 of cfg.as)for(const b2 of cfg.bs){const f=rev?b2:a2,t=rev?a2:b2;const ex=state.links.find(l=>l.from===f&&l.to===t&&l.kind==='plan');if(ex){if(how!=='es')ex.how=how;else delete ex.how}else state.links.push(Object.assign({id:uid(),from:f,to:t,kind:'plan'},how!=='es'?{how}:{}))}});
     closeModal();mode.last=b;renderChart();toast('関連付けました。続けて次のタスクを選べます')};
