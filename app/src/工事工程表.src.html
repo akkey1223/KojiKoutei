@@ -187,6 +187,18 @@ body:not(.admin) .adm{display:none!important}
 .newloc{font-size:16px;font-weight:700;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:6px;word-break:break-all;margin:8px 0}
 #gbox .g2 label{min-width:0}
 .row.lock .c input{color:var(--mut)}
+.mrow{border-bottom:1px solid var(--line2)}
+.mrow .row{border-bottom:1px dashed var(--line2)}
+.mrow .row:last-child{border-bottom:0}
+.mhead{display:flex;align-items:center;gap:4px;height:20px;font-size:12px;white-space:nowrap;overflow:hidden;color:var(--mut)}
+.mhead .grip{display:flex;width:22px;height:20px;align-items:center;justify-content:center}
+.mhead .wbs{width:44px;flex:none}
+.mhead b{color:var(--ink)}
+.mhead.sel{background:var(--sel)}
+.sbd{flex:none;min-width:17px;height:17px;border-radius:9px;color:#fff;font-size:10px;font-weight:700;display:inline-grid;place-items:center;padding:0 3px;margin-right:2px}
+.row.hov{outline:2px solid var(--hc,var(--acc));outline-offset:-2px;position:relative;z-index:1}
+g.hov rect.pb,g.hov>rect:first-of-type{stroke:var(--ink);stroke-width:2}
+.selbar{fill:none;stroke:var(--ink);stroke-width:1.6;stroke-dasharray:3 2;pointer-events:none}
 .row.mine{box-shadow:inset 3px 0 0 #2f855a}
 table.ut th{text-align:left;font-size:12px;color:var(--mut);font-weight:400;padding:4px}
 table.ut td{border-top:1px solid var(--line2)}
@@ -233,6 +245,7 @@ table.ut td{border-top:1px solid var(--line2)}
       <button class="btn" id="b-path" title="バーを押した順にパスを引きます">パス設定モード</button>
       <select class="btn" id="v-kind" title="作成するパスの種類"><option value="plan">予定パスを引く</option><option value="actual">実施パスを引く</option></select>
     </div>
+    <div class="grp"><span class="gl">左の表</span><select class="btn" id="v-show" title="左の表に出す項目（バーの表示は変わりません）"><option value="both">予定・実施</option><option value="plan">予定</option><option value="act">実施</option></select></div>
     <div class="grp"><span class="gl">表示</span>
       <label class="chk"><input type="checkbox" id="v-lp"> 予定パス</label>
       <label class="chk"><input type="checkbox" id="v-la"> 実施パス</label>
@@ -305,7 +318,9 @@ function jpHolidays(y){
 }
 
 /* ---------- 状態 ---------- */
-let state,undoS=[],redoS=[],C={},byId={},kids={},IDX=new Map(),ROWS=[],FULL=[],WBS={},R=null,sel=null,dirty=false,DW=22;
+let state,undoS=[],redoS=[],C={},byId={},kids={},IDX=new Map(),ROWS=[],FULL=[],WBS={},R=null,sel=null,dirty=false,DW=22,TOTH=0,SUBI={};
+/* 畳んだ行に子のバーが2本以上あるとき：見出し(MH)＋子ごとの入力行。子とバーは同じ色の番号で対応させる */
+const MH=20,SUBC=['#7c3aed','#059669','#db2777','#0891b2','#b45309','#475569','#ea580c','#4f46e5'];
 const mode={path:false,rel:false,last:null};
 let drag=null,rdrag=null,sdrag=null,modalOpen=false;
 const offCache=new Map();
@@ -343,7 +358,7 @@ function sample(){
     settings:{sat:true,sun:true,nat:true,periods:[{name:'河川の出水期',from:'2026-06-01',to:'2026-10-31',yearly:true,y0:2026,y1:9999}],
       koji:Object.assign({},KOJI0,{place:'○○県○○市地先',from:'2027-01-12',to:'2027-12-24',rainRate:0.9,jigyo:'河川改修',kubun:'築堤･護岸',kyokuCode:'86',kyokuName:'近畿地方整備局',taishoName:'河川工事',A:11.02,b:0.173,prep:40,clean:20}),
       colors:{plan:'#2563c9',act:'#ef7d1a',parent:'#3a4452',linkPlan:'#2563c9',linkAct:'#c2410c'}},
-    view:{sort:'input',showPlanLinks:true,showActLinks:true,lblName:true,lblStart:true,lblEnd:true,lblAct:true,lblWait:true,dw:14,leftW:640,kind:'plan',shadeWeek:false},
+    view:{show:'both',sort:'input',showPlanLinks:true,showActLinks:true,lblName:true,lblStart:true,lblEnd:true,lblAct:true,lblWait:true,dw:14,leftW:640,kind:'plan',shadeWeek:false},
     tasks:[
       T('p1','準備工',null,{qty:1,unit:'式'}),
       T('t11','準備工','p1',{startRule:{type:'fixed',date:'2027-01-12'},qty:1,unit:'式',work:30,rainRate:0,restricted:false,proc:'01 準備'}),
@@ -514,8 +529,14 @@ function sortSib(a){
 function buildRows(){
   const out=[];FULL=[];WBS={};
   const walk=(p,depth,pre,hid)=>{sortSib((kids[p]||[]).slice()).forEach((t,i)=>{const w=pre?pre+'.'+(i+1):String(i+1);WBS[t.id]=w;FULL.push(t);if(!hid)out.push({t,depth,wbs:w});walk(t.id,depth+1,w,hid||t.collapsed)})};
-  walk('root',0,'',false);return out;
+  walk('root',0,'',false);
+  let y=0;SUBI={};const pos=new Map(FULL.map((t,i)=>[t.id,i]));
+  for(const r of out){const t=r.t;r.subs=null;
+    if(t.collapsed&&(kids[t.id]||[]).length){const ls=leafIds(t.id);if(ls.length>=2){r.subs=ls.map(id=>byId[id]).sort((a,b)=>pos.get(a.id)-pos.get(b.id));r.subs.forEach((x,j)=>SUBI[x.id]={j,col:SUBC[j%SUBC.length],row:t.id,peers:r.subs.map(y=>y.id)})}}
+    r.top=y;r.h=r.subs?MH+r.subs.length*RH:RH;r.lane=r.subs?y+MH+(r.subs.length-1)*RH/2:y;y+=r.h}
+  TOTH=y;return out;
 }
+function rowAt(y){let lo=0,hi=ROWS.length-1;if(hi<0)return-1;while(lo<hi){const m=(lo+hi+1)>>1;if(ROWS[m].top<=y)lo=m;else hi=m-1}return lo}
 function ruleText(t,key){
   const r=t[key],hd=key==='startRule'?'開始':key==='endRule'?'完了':'期限';
   if(!r)return hd+'：なし';
@@ -530,28 +551,43 @@ function ruleText(t,key){
 /* ---------- 描画：表 ---------- */
 const COLS=[{k:'grip',l:'',w:22},{k:'wbs',l:'No.',w:48},{k:'name',l:'工種・種別・細別',w:220},{k:'spec',l:'規格',w:130},{k:'qty',l:'数量',w:76},{k:'unit',l:'単位',w:48},{k:'daily',l:'日当り<small>施工量</small>',w:76},{k:'parties',l:'班数',w:44},{k:'work',l:'施工<small>日数</small>',w:66},{k:'dur',l:'暦日数',w:62},{k:'ps',l:'開始予定日',w:124},{k:'pe',l:'完了予定日',w:124},{k:'as',l:'開始日<small>実績</small>',w:124},{k:'ae',l:'完了日<small>実績</small>',w:124},{k:'prog',l:'進捗度',w:64},{k:'who',l:'担当者',w:90},{k:'note',l:'備考',w:170}];
 const lhead=$('#lhead'),lbody=$('#lbody'),lin=$('#lin'),rhead=$('#rhead'),rbody=$('#rbody'),hsvg=$('#hsvg'),csvg=$('#csvg');
+/* 左の表の表示：予定＝予定に関する項目、実施＝実施に関する項目、予定・実施＝すべて */
+const HIDE={both:[],plan:['as','ae','prog'],act:['spec','qty','unit','daily','parties','work','dur','ps','pe']};
+let COLV=COLS;
 function renderLeft(){
-  const tw=COLS.reduce((s,c)=>s+c.w,0);
-  $('#left').style.setProperty('--gt',COLS.map(c=>c.w+'px').join(' '));
+  const hide=new Set(HIDE[state.view.show]||[]);COLV=COLS.filter(c=>!hide.has(c.k));
+  const tw=COLV.reduce((s,c)=>s+c.w,0);
+  $('#left').style.setProperty('--gt',COLV.map(c=>c.w+'px').join(' '));
   lhead.style.width=lbody.style.width=tw+'px';lhead.style.minWidth=lbody.style.minWidth=tw+'px';
-  lhead.innerHTML=COLS.map(c=>`<div class="h">${c.l}</div>`).join('');
-  lin.style.height=(ROWS.length*RH+80)+'px';
+  lhead.innerHTML=COLV.map(c=>`<div class="h">${c.l}</div>`).join('');
+  lin.style.height=(TOTH+80)+'px';
   lin.innerHTML=ROWS.map(rowHTML).join('');
   const who=new Set(activeUsers().map(u=>u.name)),proc=new Set();for(const t of state.tasks){if(t.who)who.add(t.who);if(t.proc)proc.add(t.proc)}
   $('#dl-who').innerHTML=[...who].map(v=>`<option value="${esc(v)}">`).join('');
   $('#dl-proc').innerHTML=[...proc].sort().map(v=>`<option value="${esc(v)}">`).join('');
 }
 function rowHTML(r){
-  const t=r.t,c=C[t.id],P=c.parent,mine=owns(t.id),RD=mine?'':' readonly';
+  if(r.subs)return mrowHTML(r);
+  const t=r.t,mine=owns(t.id);
+  return `<div class="row${C[t.id].parent?' par':''}${t.id===sel?' sel':''}${mine?(isAdmin()?'':' mine'):' lock'}" data-id="${t.id}"${lockTip(t,mine)}>${cellsHTML(t,r.wbs,r.depth,null)}</div>`;
+}
+const lockTip=(t,mine)=>mine?'':` title="${esc(t.who?`担当：${t.who}（${ME?'担当外のため閲覧のみ':'閲覧のみ'}）`:'担当者未設定（管理者だけが編集できます）')}"`;
+/* 畳んだ行に子のバーが2本以上：見出し＋子ごとの入力行（番号の色＝チャートのバーの番号の色） */
+function mrowHTML(r){
+  const t=r.t,c=C[t.id];
+  return `<div class="mrow" style="height:${r.h}px" data-pid="${t.id}"><div class="mhead${t.id===sel?' sel':''}" data-id="${t.id}"><span class="grip" title="ドラッグで上下に移動">⠿</span><span class="wbs" title="ダブルクリックで詳細設定">${r.wbs}</span><span style="padding-left:${r.depth*16}px"></span><button class="tg" data-tg title="折りたたみ">▸</button><b>${esc(t.name)}</b>　${r.subs.length}本のバー　予定 ${md(c.ps)}〜${md(c.pe)}（${c.dur}日）</div>`+
+    r.subs.map(x=>{const mine=owns(x.id),si=SUBI[x.id];return `<div class="row sub${x.id===sel?' sel':''}${mine?(isAdmin()?'':' mine'):' lock'}" data-id="${x.id}" style="--hc:${si.col}"${lockTip(x,mine)}>${cellsHTML(x,WBS[x.id],r.depth+1,si)}</div>`}).join('')+`</div>`;
+}
+function cellsHTML(t,wbs,depth,si){
+  const c=C[t.id],P=c.parent,mine=owns(t.id),RD=mine?'':' readonly';
   const di=(k,v)=>`<input type="date" data-k="${k}" value="${iso(v)}"${RD}>`;
   const ro=(v,cl='')=>`<div class="c ro ${cl}">${v}</div>`;
   const sRel=!P&&t.anchor!=='end'&&t.startRule?.type==='rel',eRel=!P&&t.anchor!=='start'&&t.endRule?.type==='rel';
   const sTip=P?'子タスクから自動計算':t.anchor==='end'?'完了日と作業日数から計算':ruleText(t,'startRule');
   const eTip=P?'子タスクから自動計算':t.anchor==='start'?'開始日と作業日数から計算':ruleText(t,'endRule');
-  return `<div class="row${P?' par':''}${t.id===sel?' sel':''}${mine?(isAdmin()?'':' mine'):' lock'}" data-id="${t.id}"${mine?'':` title="${esc(t.who?`担当：${t.who}（${ME?'担当外のため閲覧のみ':'閲覧のみ'}）`:'担当者未設定（管理者だけが編集できます）')}"`}>
-<div class="c grip" title="ドラッグで上下に移動（行の中央に落とすと子タスクになります）">⠿</div>
-<div class="c wbs" title="ダブルクリックで詳細設定">${r.wbs}</div>
-<div class="c name" style="padding-left:${3+r.depth*16}px">${P?`<button class="tg" data-tg title="折りたたみ">${t.collapsed?'▸':'▾'}</button>`:'<span class="tg0"></span>'}<input data-k="name" value="${esc(t.name)}" placeholder="名称"${RD}>${c.err?`<span class="warn" title="${esc(c.err)}">!</span>`:''}${c.over?`<span class="warn ov" title="${esc(`期限 ${fmt(c.dl)} を ${c.over}日超過しています\n${ruleText(t,'deadline')}`)}">期</span>`:''}</div>
+  const html=`${si?'<div class="c"></div>':'<div class="c grip" title="ドラッグで上下に移動（行の中央に落とすと子タスクになります）">⠿</div>'}
+<div class="c wbs" title="ダブルクリックで詳細設定">${wbs}</div>
+<div class="c name" style="padding-left:${3+depth*16}px">${si?`<span class="sbd" style="background:${si.col}" title="チャートで同じ色の番号のバー">${si.j+1}</span>`:P?`<button class="tg" data-tg title="折りたたみ">${t.collapsed?'▸':'▾'}</button>`:'<span class="tg0"></span>'}<input data-k="name" value="${esc(t.name)}" placeholder="名称"${RD}>${c.err?`<span class="warn" title="${esc(c.err)}">!</span>`:''}${c.over?`<span class="warn ov" title="${esc(`期限 ${fmt(c.dl)} を ${c.over}日超過しています\n${ruleText(t,'deadline')}`)}">期</span>`:''}</div>
 <div class="c"><input data-k="spec" value="${esc(t.spec)}"${RD}></div>
 <div class="c"><input type="number" min="0" step="any" data-k="qty" value="${esc(t.qty)}"${RD}></div>
 <div class="c"><input data-k="unit" value="${esc(t.unit)}"${RD}></div>
@@ -565,9 +601,11 @@ ${P?ro(fmt(c.as)):`<div class="c">${di('as',parse(t.as))}</div>`}
 ${P?ro(c.ae!=null?fmt(c.ae):''):`<div class="c">${di('ae',c.ae)}</div>`}
 ${P?ro(Math.round(c.prog)+'%','num'):`<div class="c"><input type="number" min="0" max="100" step="5" data-k="prog" value="${c.prog}"${RD}></div>`}
 <div class="c"><input data-k="who" list="dl-who" value="${esc(t.who)}"${isAdmin()?'':' readonly title="担当者の変更は管理者だけができます"'}></div>
-<div class="c"><input data-k="note" value="${esc(t.note)}"${RD}></div></div>`;
+<div class="c"><input data-k="note" value="${esc(t.note)}"${RD}></div>`;
+  /* 列ごとに切り分けて、表示する列だけ並べる */
+  const tmp=document.createElement('div');tmp.innerHTML=html;const cells=[...tmp.children];
+  return COLS.map((col,i)=>COLV.includes(col)?cells[i].outerHTML:'').join('');
 }
-
 /* ---------- 描画：チャート ---------- */
 const X=n=>(n-R.from)*DW;
 function calcRange(){
@@ -595,7 +633,8 @@ function renderHead(){
 }
 function stickMonths(){const L=rbody.scrollLeft;for(const t of hsvg.querySelectorAll('.mt')){const x0=+t.dataset.x0,x1=+t.dataset.x1;t.setAttribute('x',Math.max(x0+6,Math.min(L+6,x1-80)))}}
 function renderChart(){
-  const S=state.settings,V=state.view,W=(R.to-R.from+1)*DW,H=Math.max(ROWS.length*RH+80,rbody.clientHeight);
+  const S=state.settings,V=state.view,W=(R.to-R.from+1)*DW,H=Math.max(TOTH+80,rbody.clientHeight);
+  const LN=i=>ROWS[i].lane,TP=i=>ROWS[i].top,BT=i=>ROWS[i].top+ROWS[i].h;
   let bg='',fg='',lk='',lb='';
   if(V.shadeWeek)for(let d=R.from;d<=R.to;d++)if(dispOff(d)&&!off(d))bg+=`<rect x="${X(d)}" y="0" width="${DW}" height="${H}" class="hol"/>`;
   for(let d=R.from;d<=R.to;){if(off(d)){let e=d;while(e+1<=R.to&&off(e+1))e++;bg+=`<rect x="${X(d)}" y="0" width="${(e-d+1)*DW}" height="${H}" class="rst"><title>${esc(off(d))}（作業不能期間）${esc(fmt(d))}〜${esc(fmt(e))}</title></rect>`;d=e+1}else d++}
@@ -604,11 +643,11 @@ function renderChart(){
   ROWS.forEach((r,i)=>{RI[r.t.id]=i;const ch=(kids[r.t.id]||[]).length;if(!ch)LROW[r.t.id]=i;else if(r.t.collapsed)for(const l of leafIds(r.t.id))LROW[l]=i});
   const visId=id=>{let x=id,g=0;while(x&&RI[x]==null&&g++<999)x=byId[x]?.parent;return x};
   const selRow=sel?visId(sel):null;
-  ROWS.forEach((r,i)=>{const y=i*RH;if(r.t.id===selRow)bg+=`<rect x="0" y="${y}" width="${W}" height="${RH}" class="selr"/>`;
-    bg+=`<line x1="0" x2="${W}" y1="${y+HALF}" y2="${y+HALF}" class="ml"/><line x1="0" x2="${W}" y1="${y+RH}" y2="${y+RH}" class="rl"/>`});
+  ROWS.forEach((r,i)=>{if(r.t.id===selRow)bg+=`<rect x="0" y="${r.top}" width="${W}" height="${r.h}" class="selr"/>`;
+    bg+=`<line x1="0" x2="${W}" y1="${r.lane+HALF}" y2="${r.lane+HALF}" class="ml"/><line x1="0" x2="${W}" y1="${r.top+r.h}" y2="${r.top+r.h}" class="rl"/>`});
   {const K=S.koji,k1=parse(K.from),k2=parse(K.to);
-    if(k1!=null&&k1>=R.from&&k1<=R.to)lb+=`<line x1="${X(k1)}" x2="${X(k1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k1)+3}" y="${ROWS.length*RH+16}" class="kkt">工期始 ${md(k1)}</text>`;
-    if(k2!=null&&k2>=R.from&&k2<=R.to)lb+=`<line x1="${X(k2+1)}" x2="${X(k2+1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k2+1)-3}" y="${ROWS.length*RH+16}" class="kkt" text-anchor="end">工期末 ${md(k2)}</text>`}
+    if(k1!=null&&k1>=R.from&&k1<=R.to)lb+=`<line x1="${X(k1)}" x2="${X(k1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k1)+3}" y="${TOTH+16}" class="kkt">工期始 ${md(k1)}</text>`;
+    if(k2!=null&&k2>=R.from&&k2<=R.to)lb+=`<line x1="${X(k2+1)}" x2="${X(k2+1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k2+1)-3}" y="${TOTH+16}" class="kkt" text-anchor="end">工期末 ${md(k2)}</text>`}
   if(todayN>=R.from&&todayN<=R.to)bg+=`<rect x="${X(todayN)}" y="0" width="${DW}" height="${H}" class="todayc"/><line x1="${X(todayN)+DW/2}" x2="${X(todayN)+DW/2}" y1="0" y2="${H}" class="todayl"/>`;
   const tipOf=(t,c)=>esc(`${WBS[t.id]} ${t.name}${t.spec?' '+t.spec:''}${t.qty!==''&&t.qty!=null?`　${t.qty}${t.unit}`:''}\n予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}（暦日 ${c.dur}日）`+(!c.parent&&c.work!=null?`\n${durText(t,c)}`:'')+(c.as!=null?`\n実施 ${fmt(c.as)} 〜 ${c.ae!=null?fmt(c.ae):'作業中'}`:'')+`\n進捗 ${Math.round(c.prog)}%`+(c.dl!=null?`\n期限 ${fmt(c.dl)}${c.over?`（${c.over}日超過）`:'（期限内）'}`:'')+(c.err?'\n⚠ '+c.err:''));
   const pick=(t,c,top)=>{const x1=X(c.ps),w=X(c.pe+1)-x1;
@@ -618,12 +657,15 @@ function renderChart(){
   const leafBar=(t,top,inRow)=>{
     const c=C[t.id],cp=t.cPlan||S.colors.plan,ca=t.cAct||S.colors.act,tip=tipOf(t,c),x1=X(c.ps),x2=X(c.pe+1),w=x2-x1;
     let hb='';if(c.cal)for(let d=c.ps;d<=c.pe;d++)if(off(d))hb+=`<rect x="${X(d)}" y="${top+3}" width="${DW}" height="${HALF-5}" class="hb"/>`;
-    fg+=`<g data-part="plan" data-lid="${t.id}" class="${c.err?'err':''}"><title>${tip}</title><rect class="pb" x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" fill="${cp}"/>${hb}${c.prog>0?`<rect x="${x1}" y="${top+3}" width="${w*c.prog/100}" height="${HALF-5}" rx="3" class="pg"/>`:''}${c.over?(()=>{const o1=X(Math.max(c.ps,c.dl+1));return `<rect x="${o1}" y="${top+3}" width="${x2-o1}" height="${HALF-5}" fill="url(#ovh)"/><rect x="${o1+.75}" y="${top+3.75}" width="${Math.max(0,x2-o1-1.5)}" height="${HALF-6.5}" class="ovl"/>`})():''}${inRow?`<rect x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" class="sepl"/>`:''}</g>`;
+    fg+=`<g data-part="plan" data-lid="${t.id}"${inRow?' data-sub="1"':''} class="${c.err?'err':''}"><title>${tip}</title><rect class="pb" x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" fill="${cp}"/>${hb}${c.prog>0?`<rect x="${x1}" y="${top+3}" width="${w*c.prog/100}" height="${HALF-5}" rx="3" class="pg"/>`:''}${c.over?(()=>{const o1=X(Math.max(c.ps,c.dl+1));return `<rect x="${o1}" y="${top+3}" width="${x2-o1}" height="${HALF-5}" fill="url(#ovh)"/><rect x="${o1+.75}" y="${top+3.75}" width="${Math.max(0,x2-o1-1.5)}" height="${HALF-6.5}" class="ovl"/>`})():''}${inRow?`<rect x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" class="sepl"/>`:''}</g>`;
     if(c.dl!=null){const xd=X(c.dl+1);fg+=`<g class="dlm"><title>${esc(ruleText(t,'deadline')+(c.over?`\n${c.over}日超過`:'\n期限内'))}</title><line x1="${xd}" x2="${xd}" y1="${top}" y2="${top+HALF}"/><path d="M${xd} ${top}h-6l3 4z"/></g>`}
     if(c.as!=null){const a1=X(c.as),a2=X(c.aeDraw+1),open=c.ae==null;
-      fg+=`<g data-part="act" data-lid="${t.id}"><title>${tip}</title><rect x="${a1}" y="${top+HALF+2}" width="${a2-a1}" height="${HALF-5}" rx="3" fill="${ca}"${open?` fill-opacity=".45" stroke="${ca}" stroke-dasharray="4 2"`:''}/></g>`;
+      fg+=`<g data-part="act" data-lid="${t.id}"${inRow?' data-sub="1"':''}><title>${tip}</title><rect x="${a1}" y="${top+HALF+2}" width="${a2-a1}" height="${HALF-5}" rx="3" fill="${ca}"${open?` fill-opacity=".45" stroke="${ca}" stroke-dasharray="4 2"`:''}/></g>`;
       if(V.lblAct&&!inRow){lb+=`<text x="${a1-4}" y="${top+HALF+13}" class="lb ac" text-anchor="end">${md(c.as)}</text>`;if(!open)lb+=`<text x="${a2+4}" y="${top+HALF+13}" class="lb ac">${md(c.ae)}</text>`}}
-    if(inRow){if(inRow==='lbl'&&V.lblName&&w>t.name.length*11+8)lb+=`<text x="${x1+w/2}" y="${top+13}" class="lbin" text-anchor="middle">${esc(t.name)}</text>`}
+    const si=inRow&&SUBI[t.id];
+    if(si){const same=inRow==='row'?si.peers.filter(o=>SUBI[o].j<si.j&&C[o].ps===c.ps).length:0,bx=(w>=24?x1+9:x1-9)+same*17;lb+=`<g data-lid="${t.id}" data-sub="1"><circle cx="${bx}" cy="${top+HALF/2+1}" r="7.5" fill="${si.col}" stroke="#fff" stroke-width="1.2"/><text x="${bx}" y="${top+HALF/2+4.5}" class="lbin" text-anchor="middle">${si.j+1}</text></g>`}
+    if(t.id===sel&&(inRow||V.show!=='both')){fg+=`<rect x="${x1-2}" y="${top+1}" width="${w+4}" height="${HALF-1}" rx="4" class="selbar"/>`;if(c.as!=null)fg+=`<rect x="${X(c.as)-2}" y="${top+HALF}" width="${X(c.aeDraw+1)-X(c.as)+4}" height="${HALF-1}" rx="4" class="selbar"/>`}
+    if(inRow){if(inRow==='lbl'&&V.lblName&&w>t.name.length*11+(si?30:8))lb+=`<text x="${x1+w/2+(si?9:0)}" y="${top+13}" class="lbin" text-anchor="middle">${esc(t.name)}</text>`}
     else{if(V.lblStart)lb+=`<text x="${x1-4}" y="${top+13}" class="lb" text-anchor="end">${md(c.ps)}</text>`;
       let lx=x2+4;if(V.lblEnd){lb+=`<text x="${lx}" y="${top+13}" class="lb">${md(c.pe)}</text>`;lx+=md(c.pe).length*6.3+6}
       if(V.lblName){lb+=`<text x="${lx}" y="${top+13}" class="lb nm">${esc(t.name)}</text>`;lx+=t.name.length*11.5+6}
@@ -631,7 +673,7 @@ function renderChart(){
     pick(t,c,top);
   };
   ROWS.forEach((r,i)=>{
-    const t=r.t,c=C[t.id],top=i*RH,x1=X(c.ps),x2=X(c.pe+1);
+    const t=r.t,c=C[t.id],top=r.lane,x1=X(c.ps),x2=X(c.pe+1);
     if(!c.parent){leafBar(t,top,false);return}
     if(t.collapsed){
       const ls=leafIds(t.id);
@@ -657,16 +699,16 @@ function renderChart(){
     if(L.kind==='plan'?!V.showPlanLinks:!V.showActLinks)continue;
     const ia=rowOf(L.from),ib=rowOf(L.to);if(ia==null||ib==null)continue;
     const a=C[L.from],b=C[L.to];if(!a||!b)continue;let ea,sb,ya,yb;
-    if(L.kind==='plan'){ea=a.pe;sb=b.ps;ya=ia*RH+9.5;yb=ib*RH+9.5}
-    else{if(a.as==null||b.as==null)continue;ea=a.aeDraw;sb=b.as;ya=ia*RH+HALF+8.5;yb=ib*RH+HALF+8.5}
+    if(L.kind==='plan'){ea=a.pe;sb=b.ps;ya=LN(ia)+9.5;yb=LN(ib)+9.5}
+    else{if(a.as==null||b.as==null)continue;ea=a.aeDraw;sb=b.as;ya=LN(ia)+HALF+8.5;yb=LN(ib)+HALF+8.5}
     const x1=X(ea+1),x2=X(sb),bad=sb<=ea,hh=6.5,dir=Math.sign(yb-ya);let d;
-    if(bad&&dir!==0){const ym=dir>0?ib*RH:(ib+1)*RH;d=`M${x1} ${ya}H${x1+8}V${ym}H${x2-10}V${yb}H${x2}`}
+    if(bad&&dir!==0){const ym=dir>0?TP(ib):BT(ib);d=`M${x1} ${ya}H${x1+8}V${ym}H${x2-10}V${yb}H${x2}`}
     else if(dir===0)d=`M${x1} ${ya}L${x2} ${yb}`;
     else if(x2-x1>=4)d=`M${x1} ${ya+dir*hh}V${yb}H${x2}`;
     else d=`M${x1} ${ya+dir*hh}L${x2} ${yb-dir*hh}`;
     const col=bad?'#d62828':L.kind==='plan'?S.colors.linkPlan:S.colors.linkAct;
     if(V.lblWait&&L.note){
-      const ly=bad&&dir!==0?(dir>0?ib*RH:(ib+1)*RH):yb,xm=(x1+x2)/2;
+      const ly=bad&&dir!==0?(dir>0?TP(ib):BT(ib)):yb,xm=(x1+x2)/2;
       lb+=`<text x="${xm}" y="${ly-4}" class="wn" fill="${col}" text-anchor="middle">${esc(L.note)}</text>`}
     lk+=`<g class="lk" data-link="${L.id}"><title>${esc((L.kind==='plan'?'予定パス':'実施パス')+'：'+byId[L.from].name+' → '+byId[L.to].name+(bad?'（後続の開始が先行の完了以前）':'')+(L.note?'\nコメント：'+L.note:'')+(mode.path?'\nクリックでコメント・削除':''))}</title><path d="${d}" class="lkh"/><path d="${d}" stroke="${col}" class="lkp${L.kind==='plan'?'':' la'}" marker-end="url(#ar-${bad?'bad':L.kind})"/></g>`;
   }
@@ -683,11 +725,11 @@ function renderChart(){
           info.push(`「${nm(t.id)}」の${kn} ← 「${nm(e.ref)}」の${e.base==='start'?'開始日':'完了日'} ${o0>=0?'+':''}${o0}日${many?(r.mode==='min'?'（複数のうち最も早い日）':'（複数のうち最も遅い日）'):''}`);
           const ia=rowOf(e.ref),ib=rowOf(t.id);if(ia==null||ib==null)continue;
           if(V.showPlanLinks&&state.links.some(l=>l.kind==='plan'&&((l.from===e.ref&&l.to===t.id)||(l.from===t.id&&l.to===e.ref))))continue;
-          const ca=C[e.ref],cb=C[t.id],xa=e.base==='start'?X(ca.ps):X(ca.pe+1),xb=k==='startRule'?X(cb.ps):k==='deadline'?X((cb.dl??cb.pe)+1):X(cb.pe+1),ya=ia*RH+9.5,yb=ib*RH+9.5;
+          const ca=C[e.ref],cb=C[t.id],xa=e.base==='start'?X(ca.ps):X(ca.pe+1),xb=k==='startRule'?X(cb.ps):k==='deadline'?X((cb.dl??cb.pe)+1):X(cb.pe+1),ya=LN(ia)+9.5,yb=LN(ib)+9.5;
           const dv=Math.sign(yb-ya),d=ia===ib?`M${xa} ${ya}L${xb} ${yb}`:`M${xa} ${ya+dv*6.5}V${yb}H${xb}`,o=+e.offset||0;
           lk+=`<path d="${d}" class="rlp" marker-end="url(#ar-rel)"/>`;
           boxes.add(e.ref);boxes.add(t.id)}}}
-    for(const id of boxes){if(focus.has(id))continue;const i=rowOf(id),c=C[id];if(i==null)continue;fg+=`<rect x="${X(c.ps)-2}" y="${i*RH+1}" width="${X(c.pe+1)-X(c.ps)+4}" height="${HALF-1}" rx="4" class="relbox"/>`}
+    for(const id of boxes){if(focus.has(id))continue;const i=rowOf(id),c=C[id];if(i==null)continue;fg+=`<rect x="${X(c.ps)-2}" y="${LN(i)+1}" width="${X(c.pe+1)-X(c.ps)+4}" height="${HALF-1}" rx="4" class="relbox"/>`}
   }
   const ri=$('#relinfo');
   if(info.length&&!drag){ri.innerHTML=`<b>関連付け（${info.length}件）</b><ul>${info.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><small>破線：パスを引いていない関連付け</small>`;ri.style.display='block'}else ri.style.display='none';
@@ -711,7 +753,7 @@ function updateUI(){
   document.body.classList.toggle('ro',RO||!ME);document.body.classList.toggle('admin',isAdmin());
   const wb=$('#whob');wb.textContent=ME?`${ME.name}（${ROLE[ME.role]}）`:'閲覧のみ';wb.className='whob'+(isAdmin()?' adm-b':'');
   $('#b-me').textContent=FS.moved?'新しい場所へ':ME?'ログアウト':'ログイン';$('#b-me').title=ME?'ログアウトして閲覧のみに戻ります':'ログインして担当分を編集します';
-  $('#v-sort').value=V.sort;$('#v-kind').value=V.kind;
+  $('#v-sort').value=V.sort;$('#v-show').value=V.show||'both';$('#v-kind').value=V.kind;
   $('#v-lw').checked=V.lblWait;$('#v-lp').checked=V.showPlanLinks;$('#v-la').checked=V.showActLinks;$('#v-ln').checked=V.lblName;$('#v-ls').checked=V.lblStart;$('#v-le').checked=V.lblEnd;$('#v-lact').checked=V.lblAct;
   const maxD=maxDepth(),cur=curLevel();
   $('#olv').innerHTML=Array.from({length:maxD+1},(_,i)=>`<button class="btn olv${cur===i+1?' cur':''}" data-lv="${i+1}" title="階層${i+1}まで表示（それより下は畳む）">${i+1}</button>`).join('');
@@ -810,7 +852,7 @@ function editCell(id,k,v){
     case'prog':t.prog=clamp(Math.round(+v||0),0,100);break;
     default:t[k]=v}},true);
 }
-function select(id){sel=id;for(const e of lin.querySelectorAll('.row.sel'))e.classList.remove('sel');if(id)lin.querySelector(`.row[data-id="${id}"]`)?.classList.add('sel');renderChart()}
+function select(id){sel=id;for(const e of lin.querySelectorAll('.row.sel,.mhead.sel'))e.classList.remove('sel');if(id)lin.querySelector(`.row[data-id="${id}"],.mhead[data-id="${id}"]`)?.classList.add('sel');renderChart()}
 function setMode(m){if(m&&RO){deny();return}mode.path=m==='path';mode.rel=m==='rel';mode.last=null;updateUI();renderChart();if(m)toast(m==='rel'?'基準にするタスクのバーをクリックしてください':'バーを順にクリックしてください')}
 function pathClick(t){
   if(!mode.last)mode.last=t.id;
@@ -1012,8 +1054,8 @@ ${pb?`<p class="hint">「${esc(nm(b))}」は親タスクのため、入口の子
 /* ---------- チャート操作 ---------- */
 const pt=e=>{const r=csvg.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
 function hit(p,tg){
-  const ri=Math.floor(p.y/RH),row=ROWS[ri];if(!row||p.y<0)return null;
-  const half=(p.y-ri*RH)<HALF?'plan':'act';let t=row.t,c=C[t.id];
+  if(p.y<0||p.y>=TOTH)return null;const ri=rowAt(p.y),row=ROWS[ri];if(!row)return null;
+  const half=(p.y-row.lane)<HALF?'plan':'act';let t=row.t,c=C[t.id];
   if(t.collapsed&&(kids[t.id]||[]).length){const ls=leafIds(t.id);let best=null;
     const tl=tg&&tg.closest&&tg.closest('[data-lid]');if(tl&&ls.includes(tl.dataset.lid))best=tl.dataset.lid;
     if(!best)for(const l of ls.slice().reverse()){const x=C[l],s0=half==='plan'?x.ps:x.as,e0=half==='plan'?x.pe:x.aeDraw;if(s0==null)continue;if(p.x>=X(s0)-3&&p.x<=X(e0+1)+3){best=l;break}}
@@ -1083,27 +1125,36 @@ function hover(e){
   csvg.style.cursor=cur;
 }
 csvg.addEventListener('dblclick',e=>{if(mode.path||mode.rel)return;const h=hit(pt(e),e.target);if(h)openDetail(h.t.id)});
+/* 畳んだ行の子のバー ⇔ 左の入力行：マウスを乗せた方と対応する相手を枠で示す */
+let HOV=null;
+function hov(id){if(HOV===id)return;for(const e of document.querySelectorAll('.hov'))e.classList.remove('hov');HOV=id;if(!id)return;
+  for(const g of csvg.querySelectorAll(`g[data-sub][data-lid="${id}"]`))g.classList.add('hov');
+  if(SUBI[id])lin.querySelector(`.row.sub[data-id="${id}"]`)?.classList.add('hov')}
+csvg.addEventListener('mouseover',e=>{const g=e.target.closest&&e.target.closest('g[data-sub]');hov(g?g.dataset.lid:null)});
+csvg.addEventListener('mouseleave',()=>hov(null));
+lin.addEventListener('mouseover',e=>{const r=e.target.closest('.row.sub');hov(r?r.dataset.id:null)});
+lin.addEventListener('mouseleave',()=>hov(null));
 /* 右クリック：バーの上ならそのバーのタスクの詳細設定を開く（畳んだ行に子のバーが並んでいるときは、押したバーのタスク）。バーの外はブラウザのメニューのまま */
 csvg.addEventListener('contextmenu',e=>{if(drag)return;const h=hit(pt(e),e.target);if(!h||!h.type)return;e.preventDefault();if(mode.last){mode.last=null}select(h.t.id);openDetail(h.t.id)});
 
 /* ---------- 表の操作 ---------- */
 lin.addEventListener('change',e=>{const el=e.target,k=el.dataset.k,id=el.closest('.row')?.dataset.id;if(k&&id)editCell(id,k,el.value)});
 lin.addEventListener('focusin',e=>{const id=e.target.closest('.row')?.dataset.id;if(id&&id!==sel)select(id)});
-lin.addEventListener('click',e=>{const row=e.target.closest('.row');if(!row)return;const id=row.dataset.id;
+lin.addEventListener('click',e=>{const row=e.target.closest('.row,.mhead');if(!row)return;const id=row.dataset.id;
   if(e.target.closest('[data-tg]')){const t=byId[id];t.collapsed=!t.collapsed;saveLocalView();renderAll(true);return}
   if(id!==sel)select(id)});
-lin.addEventListener('dblclick',e=>{if(e.target.closest('.wbs,.grip,.ro')){const id=e.target.closest('.row').dataset.id;openDetail(id)}});
-lin.addEventListener('pointerdown',e=>{const g=e.target.closest('.grip');if(!g||e.button!==0)return;const id=g.closest('.row').dataset.id;e.preventDefault();
+lin.addEventListener('dblclick',e=>{if(e.target.closest('.wbs,.grip,.ro')){const id=e.target.closest('.row,.mhead').dataset.id;openDetail(id)}});
+lin.addEventListener('pointerdown',e=>{const g=e.target.closest('.grip');if(!g||e.button!==0)return;const id=g.closest('.row,.mhead').dataset.id;e.preventDefault();
   if(!owns(id)){select(id);deny();return}
   if(state.view.sort!=='input'){ensureInput();sel=id;renderAll(true)}else select(id);
   rdrag={id,tid:null,pos:null};document.body.classList.add('dragging')});
 function rowDragMove(e){
   const r=lbody.getBoundingClientRect(),y=e.clientY-r.top+lbody.scrollTop;
-  const ri=clamp(Math.floor(y/RH),0,ROWS.length-1),f=(y-ri*RH)/RH;
+  const ri=clamp(rowAt(y),0,ROWS.length-1),rr=ROWS[ri],f=clamp((y-rr.top)/rr.h,0,1);
   const pos=f<.3?'before':f>.7?'after':'child';rdrag.tid=ROWS[ri]?.t.id;rdrag.pos=pos;
   const ind=$('#dropind');ind.style.display='block';
-  if(pos==='child'){ind.className='box';ind.style.top=ri*RH+'px';ind.style.height=RH+'px'}
-  else{ind.className='line';ind.style.top=((pos==='before'?ri:ri+1)*RH-1)+'px';ind.style.height='0'}
+  if(pos==='child'){ind.className='box';ind.style.top=rr.top+'px';ind.style.height=rr.h+'px'}
+  else{ind.className='line';ind.style.top=((pos==='before'?rr.top:rr.top+rr.h)-1)+'px';ind.style.height='0'}
   if(e.clientY<r.top+24)rbody.scrollTop-=14;else if(e.clientY>r.bottom-24)rbody.scrollTop+=14;
 }
 function rowDragEnd(){const d=rdrag;rdrag=null;$('#dropind').style.display='none';document.body.classList.remove('dragging');if(d.tid&&d.tid!==d.id)moveTo(d.id,d.tid,d.pos)}
@@ -1505,6 +1556,7 @@ on('#whob','click',()=>{if(ME){const u=activeUsers().find(x=>x.id===ME.id);openP
 on('#b-path','click',()=>setMode(mode.path?null:'path'));on('#b-rel','click',()=>setMode(mode.rel?null:'rel'));
 on('#ptitle','change',e=>{if(!isAdmin()){deny('工事名の変更は管理者だけができます');updateUI();return}mutate(()=>state.title=e.target.value)});
 on('#v-sort','change',e=>{state.view.sort=e.target.value;saveLocalView();renderAll(true)});
+on('#v-show','change',e=>{state.view.show=e.target.value;saveLocalView();renderAll(true)});
 on('#v-kind','change',e=>{state.view.kind=e.target.value;mode.last=null;renderChart()});
 const vt=(id,k)=>on(id,'change',e=>{state.view[k]=e.target.checked;saveLocalView();renderChart()});
 vt('#v-lp','showPlanLinks');vt('#v-la','showActLinks');vt('#v-ln','lblName');vt('#v-ls','lblStart');vt('#v-le','lblEnd');vt('#v-lact','lblAct');vt('#v-lw','lblWait');
