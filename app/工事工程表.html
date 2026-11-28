@@ -103,8 +103,8 @@ svg text{font-family:inherit}
 .hhol{fill:var(--hol)}
 .gl{stroke:var(--line2)}.gl2{stroke:var(--line)}
 .hol{fill:var(--hol)}
-.rst{fill:light-dark(#fcd5b4,#4a3220);opacity:.75}
-.hrst{fill:light-dark(#fcd5b4,#4a3220)}
+.rst{opacity:.75}
+@media (prefers-color-scheme:dark){.rst{opacity:.3}.hrst{opacity:.45}}
 .kki{stroke:#d62828;stroke-width:1.5;stroke-dasharray:6 3}
 .kkt{font-size:11px;font-weight:700;fill:#d62828;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
 .c.auto input{color:var(--mut)}
@@ -161,6 +161,7 @@ svg text{font-family:inherit}
 .relhd{font-size:15px;margin:0 0 10px}
 #modal{position:fixed;inset:0;background:rgba(10,14,20,.45);display:none;align-items:flex-start;justify-content:center;z-index:40;overflow:auto;padding:30px 12px}
 #modal.open{display:flex}
+#mbox.wide{width:min(1000px,100%)}
 #mbox{background:var(--bg);border-radius:8px;width:min(760px,100%);padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
 #mbox h2{font-size:20px;margin:0 0 12px}
 #mbox h3{font-size:14px;margin:16px 0 6px}
@@ -735,6 +736,10 @@ function inPeriod(p,n){
   const a=parse(p.from),b=parse(p.to);return a!=null&&b!=null&&n>=a&&n<=b;
 }
 function offInfo(n){for(const p of state.settings.periods)if(inPeriod(p,n))return p.name||'作業不能期間';return''}
+/* 作業不能期間の色：期間ごとに持つ。未設定なら登録順に既定の色（1つ目は従来の橙） */
+const OFF_COLORS=['#fcd5b4','#c9def5','#d4ecc9','#e4d4f2','#f6e7a6','#dcdcdc','#f5c6d0','#c8ece9'];
+const offColor=(p,i)=>p&&p.color||OFF_COLORS[i%OFF_COLORS.length];
+function offIdx(n){const ps=state.settings.periods;for(let i=0;i<ps.length;i++)if(inPeriod(ps[i],n))return i;return -1}
 function dispOff(n){const S=state.settings;
   if(S.nat){const h=jpHolidays(ymd(n)[0]).get(n);if(h)return h}
   const w=dow(n);if(w===6&&S.sat)return'土曜';if(w===0&&S.sun)return'日曜';return''}
@@ -1166,7 +1171,7 @@ function renderHead(){
   const sw=state.view.shadeWeek;let tx='';
   for(let d=R.from;d<=R.to;d++){const x=X(d),o=off(d),h=dispOff(d),w=dow(d),[,,dd]=ymd(d);
     const cl=(h&&h!=='土曜')||w===0?'hd sun':w===6?'hd sat':'hd';
-    if(o)s+=`<rect x="${x}" y="20" width="${DW}" height="32" class="hrst"><title>${esc(fmt(d)+' '+o+'（作業不能期間）'+(h?' '+h:''))}</title></rect>`;
+    if(o){const oi=offIdx(d);s+=`<rect x="${x}" y="20" width="${DW}" height="32" class="hrst" fill="${offColor(state.settings.periods[oi],oi)}"><title>${esc(fmt(d)+' '+o+'（作業不能期間）'+(h?' '+h:''))}</title></rect>`}
     else if(h&&sw)s+=`<rect x="${x}" y="20" width="${DW}" height="32" class="hhol"><title>${esc(fmt(d)+' '+h)}</title></rect>`;
     if(d===todayN)s+=`<rect x="${x}" y="20" width="${DW}" height="32" class="todayh"/>`;
     if(DW>=15){tx+=`<text x="${x+DW/2}" y="34" class="${cl}" text-anchor="middle">${dd}</text>`;if(DW>=18)tx+=`<text x="${x+DW/2}" y="48" class="${cl}" text-anchor="middle">${WD[w]}</text>`}
@@ -1185,7 +1190,7 @@ function renderChart(){
   const LN=i=>ROWS[i].lane,TP=i=>ROWS[i].top,BT=i=>ROWS[i].top+ROWS[i].h,CP=critPath();
   let bg='',fg='',lk='',lb='';
   if(V.shadeWeek)for(let d=R.from;d<=R.to;d++)if(dispOff(d)&&!off(d))bg+=`<rect x="${X(d)}" y="0" width="${DW}" height="${H}" class="hol"/>`;
-  for(let d=R.from;d<=R.to;){if(off(d)){let e=d;while(e+1<=R.to&&off(e+1))e++;bg+=`<rect x="${X(d)}" y="0" width="${(e-d+1)*DW}" height="${H}" class="rst"><title>${esc(off(d))}（作業不能期間）${esc(fmt(d))}〜${esc(fmt(e))}</title></rect>`;d=e+1}else d++}
+  for(let d=R.from;d<=R.to;){const i=offIdx(d);if(i>=0){let e=d;while(e+1<=R.to&&offIdx(e+1)===i)e++;bg+=`<rect x="${X(d)}" y="0" width="${(e-d+1)*DW}" height="${H}" class="rst" fill="${offColor(S.periods[i],i)}"><title>${esc(off(d))}（作業不能期間）${esc(fmt(d))}〜${esc(fmt(e))}</title></rect>`;d=e+1}else d++}
   for(let d=R.from;d<=R.to;d++){const w=dow(d);if(w===1)bg+=`<line x1="${X(d)}" x2="${X(d)}" y1="0" y2="${H}" class="gl2"/>`;else if(DW>=14)bg+=`<line x1="${X(d)}" x2="${X(d)}" y1="0" y2="${H}" class="gl"/>`}
   const RI={},LROW={};
   ROWS.forEach((r,i)=>{RI[r.t.id]=i;const ch=(kids[r.t.id]||[]).length;if(!ch)LROW[r.t.id]=i;else if(r.t.collapsed)for(const l of leafIds(r.t.id))LROW[l]=i});
@@ -1875,7 +1880,7 @@ lbody.addEventListener('wheel',e=>{if(e.shiftKey)return;rbody.scrollTop+=e.delta
 $('#split').addEventListener('pointerdown',e=>{sdrag={x:e.clientX,w:$('#left').getBoundingClientRect().width};e.preventDefault()});
 
 /* ---------- モーダル ---------- */
-function openModal(html){const mb=$('#mbox');mb.onchange=mb.onclick=mb.onkeydown=null;mb.innerHTML=html;$('#modal').classList.add('open');modalOpen=true}
+function openModal(html,wide){const mb=$('#mbox');mb.onchange=mb.onclick=mb.onkeydown=null;mb.classList.toggle('wide',!!wide);mb.innerHTML=html;$('#modal').classList.add('open');modalOpen=true}
 function closeModal(){$('#modal').classList.remove('open');modalOpen=false}
 $('#modal').addEventListener('pointerdown',e=>{if(e.target.id==='modal')closeModal()});
 function refOptions(id){const sub=subtreeIds(id);const anc=new Set();let p=byId[id]?.parent;while(p){anc.add(p);p=byId[p]?.parent}
@@ -2001,8 +2006,8 @@ function openSettings(){if(!isAdmin())return deny('作業不能期間・色の�
   const hl=yy=>[...jpHolidays(yy).entries()].sort((a,b)=>a[0]-b[0]).map(([n,s])=>`<li>${fmt(n)}（${WD[dow(n)]}） ${esc(s)}</li>`).join('');
   openModal(`<h2>作業不能期間・色の設定</h2>
 <h3>作業不能期間</h3>
-<p class="hint">「作業不能期間には施工しない」にしたタスク（詳細設定で切り替え）は、この期間を飛ばして日程を組みます。毎年くり返す期間（河川の出水期など）は「毎年」にチェックし、開始年・終了年で適用する年を絞れます。</p>
-<table class="pt"><tbody id="s-per">${S.periods.map((p,i)=>`<tr><td><input class="fld" data-pi="${i}" data-f="name" value="${esc(p.name)}" placeholder="名称（例：河川の出水期）" style="width:11em"></td><td><input class="fld" type="date" data-pi="${i}" data-f="from" value="${esc(p.from)}"></td><td>〜</td><td><input class="fld" type="date" data-pi="${i}" data-f="to" value="${esc(p.to)}"></td><td style="white-space:nowrap"><label class="chk"><input type="checkbox" data-pi="${i}" data-f="yearly"${p.yearly?' checked':''}> 毎年</label></td><td style="white-space:nowrap${p.yearly?'':';opacity:.4'}"><input class="fld" type="number" data-pi="${i}" data-f="y0" value="${esc(p.y0??'')}" placeholder="開始年" style="width:6em"${p.yearly?'':' disabled'}>〜<input class="fld" type="number" data-pi="${i}" data-f="y1" value="${esc(p.y1??'')}" placeholder="終了年" style="width:6em"${p.yearly?'':' disabled'}></td><td><button class="btn" data-pdel="${i}">削除</button></td></tr>`).join('')}</tbody></table>
+<p class="hint">「作業不能期間には施工しない」にしたタスク（詳細設定で切り替え）は、この期間を飛ばして日程を組みます。毎年くり返す期間（河川の出水期など）は「毎年」にチェックし、開始年・終了年で適用する年を絞れます。網掛けの色は期間ごとに選べます（未設定は登録順の既定の色。1つ目は橙）。</p>
+<table class="pt"><tbody id="s-per">${S.periods.map((p,i)=>`<tr><td><input class="fld" data-pi="${i}" data-f="name" value="${esc(p.name)}" placeholder="名称（例：河川の出水期）" style="width:11em"></td><td><input class="fld" type="date" data-pi="${i}" data-f="from" value="${esc(p.from)}"></td><td>〜</td><td><input class="fld" type="date" data-pi="${i}" data-f="to" value="${esc(p.to)}"></td><td style="white-space:nowrap"><label class="chk"><input type="checkbox" data-pi="${i}" data-f="yearly"${p.yearly?' checked':''}> 毎年</label></td><td style="white-space:nowrap${p.yearly?'':';opacity:.4'}"><input class="fld" type="number" data-pi="${i}" data-f="y0" value="${esc(p.y0??'')}" placeholder="開始年" style="width:6em"${p.yearly?'':' disabled'}>〜<input class="fld" type="number" data-pi="${i}" data-f="y1" value="${esc(p.y1??'')}" placeholder="終了年" style="width:6em"${p.yearly?'':' disabled'}></td><td style="white-space:nowrap"><input type="color" data-pi="${i}" data-f="color" value="${offColor(p,i)}" title="網掛けの色" style="width:44px;vertical-align:middle"><button class="btn" data-pcd="${i}" title="既定の色（登録順に決まる色）に戻す"${p.color?'':' disabled'}>既定</button></td><td><button class="btn" data-pdel="${i}">削除</button></td></tr>`).join('')}</tbody></table>
 <button class="btn" id="s-padd" style="margin-top:6px">＋作業不能期間を追加</button>
 <h3>土日祝の表示</h3>
 <div class="rr"><label><input type="checkbox" id="s-sat"${S.sat?' checked':''}> 土曜日</label><label><input type="checkbox" id="s-sun"${S.sun?' checked':''}> 日曜日</label><label><input type="checkbox" id="s-nat"${S.nat?' checked':''}> 国民の祝日（振替休日を含む）</label><label><input type="checkbox" id="s-week"${state.view.shadeWeek?' checked':''}> チャートに網掛けする</label></div>
@@ -2011,7 +2016,7 @@ function openSettings(){if(!isAdmin())return deny('作業不能期間・色の�
 <h3>既定の色</h3>
 <div class="rr"><label>予定バー <input type="color" id="s-c-plan" value="${S.colors.plan}"></label><label>実施バー <input type="color" id="s-c-act" value="${S.colors.act}"></label><label>親タスク <input type="color" id="s-c-parent" value="${S.colors.parent}"></label><label>予定パス <input type="color" id="s-c-linkPlan" value="${S.colors.linkPlan}"></label><label>実施パス <input type="color" id="s-c-linkAct" value="${S.colors.linkAct}"></label><label>クリティカルパス <input type="color" id="s-c-crit" value="${S.colors.crit}"></label></div>
 <p class="hint">タスクごとの色は、行の No. をダブルクリックして開く詳細設定で変えられます。</p>
-<div class="mf"><span class="sp"></span><button class="btn pri" id="s-close">閉じる</button></div>`);
+<div class="mf"><span class="sp"></span><button class="btn pri" id="s-close">閉じる</button></div>`,true);
   const box=$('#mbox');
   box.onchange=e=>{const el=e.target;
     if(el.id==='s-week'){state.view.shadeWeek=el.checked;saveLocalView();renderAll(true);return}
@@ -2019,8 +2024,9 @@ function openSettings(){if(!isAdmin())return deny('作業不能期間・色の�
     if(el.dataset.pi!=null){const P0=S.periods[+el.dataset.pi],f=el.dataset.f;if(f==='yearly'){P0.yearly=el.checked;if(el.checked&&!P0.y0){P0.y0=ymd(parse(P0.from)??todayN)[0];P0.y1=9999}}else if(f==='y0'||f==='y1')P0[f]=el.value===''?'':+el.value;else P0[f]=el.value}
     else if(el.id.startsWith('s-c-'))S.colors[el.id.slice(4)]=el.value;
     else if(el.id==='s-sat')S.sat=el.checked;else if(el.id==='s-sun')S.sun=el.checked;else if(el.id==='s-nat')S.nat=el.checked});
-    if(el.dataset.f==='yearly')openSettings()};
-  box.onclick=e=>{const d=e.target.closest('[data-pdel]');if(d){mutate(()=>S.periods.splice(+d.dataset.pdel,1));openSettings()}
+    if(el.dataset.f==='yearly'||el.dataset.f==='color')openSettings()};
+  box.onclick=e=>{const cd=e.target.closest('[data-pcd]');if(cd){mutate(()=>{delete S.periods[+cd.dataset.pcd].color});openSettings();return}
+    const d=e.target.closest('[data-pdel]');if(d){mutate(()=>S.periods.splice(+d.dataset.pdel,1));openSettings()}
     if(e.target.id==='s-padd'){mutate(()=>S.periods.push({name:'作業不能期間',from:iso(todayN),to:iso(todayN)}));openSettings()}
     if(e.target.id==='s-close'){box.onchange=box.onclick=null;closeModal()}};
 }
