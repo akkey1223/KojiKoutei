@@ -41,6 +41,13 @@ header{border-bottom:1px solid var(--line);background:var(--panel);padding:8px 1
 .btn.danger{color:var(--bad)}
 .btn:disabled{opacity:.45;cursor:default}
 select.btn{padding:0 6px}
+#vpw{position:relative}
+#vpop{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:25;background:var(--panel);border:1px solid var(--line2);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:10px 14px;width:max-content;max-width:min(520px,90vw)}
+#vpop.open{display:block}
+#vpop .vs{display:flex;flex-direction:column;gap:5px;padding:7px 0;border-top:1px solid var(--line)}
+#vpop .vs:first-child{border-top:0;padding-top:0;flex-direction:row;align-items:center;gap:8px}
+#vpop .vs b{font-size:12px;color:var(--mut);font-weight:600}
+#vpop .chk{white-space:normal}
 .chk{display:inline-flex;align-items:center;gap:3px;font-size:13px;white-space:nowrap;cursor:pointer}
 #zoom{width:110px}
 main{flex:1;display:flex;min-height:0;position:relative}
@@ -256,16 +263,25 @@ table.ut td{border-top:1px solid var(--line2)}
       <button class="btn" id="b-path" title="バーを押した順にパスを引きます">パス設定モード</button>
       <select class="btn" id="v-kind" title="作成するパスの種類"><option value="plan">予定パスを引く</option><option value="actual">実施パスを引く</option></select>
     </div>
-    <div class="grp"><span class="gl">左の表</span><select class="btn" id="v-show" title="左の表に出す項目（バーの表示は変わりません）"><option value="both">予定・実施</option><option value="plan">予定</option><option value="act">実施</option></select></div>
-    <div class="grp"><span class="gl">表示</span>
-      <label class="chk"><input type="checkbox" id="v-crit"> クリティカルパス</label>
-      <label class="chk"><input type="checkbox" id="v-lp"> 予定パス</label>
-      <label class="chk"><input type="checkbox" id="v-la"> 実施パス</label>
-      <label class="chk"><input type="checkbox" id="v-ln"> タスク名</label>
-      <label class="chk"><input type="checkbox" id="v-ls"> 開始日</label>
-      <label class="chk"><input type="checkbox" id="v-le"> 完了日</label>
-      <label class="chk"><input type="checkbox" id="v-lact"> 実施の日付</label>
-      <label class="chk"><input type="checkbox" id="v-lw"> パスのコメント</label>
+    <div class="grp" id="vpw"><button class="btn" id="b-view" title="左の表の項目・バーの文字・パス・まとめのバーなど、表示に関する設定">表示の設定 ▾</button>
+      <div id="vpop">
+        <div class="vs"><b>左の表</b><select class="btn" id="v-show" title="左の表に出す項目（バーの表示は変わりません）"><option value="both">予定・実施</option><option value="plan">予定</option><option value="act">実施</option></select></div>
+        <div class="vs"><b>階層の表示</b>
+          <label class="chk"><input type="checkbox" id="v-pbar"> 親の行のまとめのバー（工事区分〜細別など、下の工程をまとめた黒いバー）</label>
+          <label class="chk"><input type="checkbox" id="v-subs"> 畳んだ行に子が2本以上あるとき、子ごとの行を並べる（番号つき）</label></div>
+        <div class="vs"><b>パス</b>
+          <label class="chk"><input type="checkbox" id="v-crit"> クリティカルパス</label>
+          <label class="chk"><input type="checkbox" id="v-lp"> 予定パス</label>
+          <label class="chk"><input type="checkbox" id="v-la"> 実施パス</label>
+          <label class="chk"><input type="checkbox" id="v-lw"> パスのコメント</label></div>
+        <div class="vs"><b>バーの文字</b>
+          <label class="chk"><input type="checkbox" id="v-ln"> タスク名</label>
+          <label class="chk"><input type="checkbox" id="v-ls"> 開始日</label>
+          <label class="chk"><input type="checkbox" id="v-le"> 完了日</label>
+          <label class="chk"><input type="checkbox" id="v-lact"> 実施の日付</label></div>
+        <div class="vs"><b>チャート</b>
+          <label class="chk"><input type="checkbox" id="v-week"> 休日に網掛けする</label></div>
+      </div>
     </div>
     <div class="grp"><span class="gl">拡大</span><input type="range" id="zoom" min="6" max="48" step="1"><button class="btn" id="b-today">今日へ</button></div>
   </div>
@@ -383,7 +399,7 @@ function sample(){
     settings:{sat:true,sun:true,nat:true,periods:[{name:'河川の出水期',from:'2026-06-01',to:'2026-10-31',yearly:true,y0:2026,y1:9999}],
       koji:Object.assign({},KOJI0,{place:'○○県○○市地先',from:'2027-01-12',to:'2027-12-24',rainRate:0.9,jigyo:'河川改修',kubun:'築堤･護岸',kyokuCode:'86',kyokuName:'近畿地方整備局',taishoName:'河川工事',A:11.02,b:0.173,yoyu:30,prep:40,clean:20}),
       colors:{plan:'#2563c9',act:'#ef7d1a',parent:'#3a4452',linkPlan:'#2563c9',linkAct:'#c2410c',crit:'#e11d48'}},
-    view:{show:'both',showCrit:true,sort:'input',showPlanLinks:true,showActLinks:true,lblName:true,lblStart:true,lblEnd:true,lblAct:true,lblWait:true,dw:14,leftW:640,kind:'plan',shadeWeek:false},
+    view:{show:'both',showCrit:true,sort:'input',showPlanLinks:true,showActLinks:true,lblName:true,lblStart:true,lblEnd:true,lblAct:true,lblWait:true,showParBar:true,showSubs:true,dw:14,leftW:640,kind:'plan',shadeWeek:false},
     tasks:[
       frameTask('yoyu','fyoyu'),
       frameTask('prep','fprep'),
@@ -652,7 +668,7 @@ function buildRows(){
   if(grp)groupRows(out);
   let y=0;SUBI={};const pos=new Map(FULL.map((t,i)=>[t.id,i]));
   for(const r of out){const t=r.t;r.subs=null;
-    if(t.collapsed&&(kids[t.id]||[]).length){const ls=leafIds(t.id);if(ls.length>=2){r.subs=ls.map(id=>byId[id]).sort((a,b)=>pos.get(a.id)-pos.get(b.id));r.subs.forEach((x,j)=>SUBI[x.id]={j,col:SUBC[j%SUBC.length],row:t.id,peers:r.subs.map(y=>y.id)})}}
+    if(t.collapsed&&state.view.showSubs!==false&&(kids[t.id]||[]).length){const ls=leafIds(t.id);if(ls.length>=2){r.subs=ls.map(id=>byId[id]).sort((a,b)=>pos.get(a.id)-pos.get(b.id));r.subs.forEach((x,j)=>SUBI[x.id]={j,col:SUBC[j%SUBC.length],row:t.id,peers:r.subs.map(y=>y.id)})}}
     r.top=y;r.h=r.subs?MH+r.subs.length*RH:RH;r.lane=r.subs?y+MH+(r.subs.length-1)*RH/2:y;y+=r.h}
   TOTH=y;return out;
 }
@@ -837,6 +853,7 @@ function renderChart(){
       let lx=x2+4;if(V.lblEnd){lb+=`<text x="${lx}" y="${top+13}" class="lb">${md(c.pe)}</text>`;lx+=md(c.pe).length*6.3+6}
       if(V.lblName)lb+=`<text x="${lx}" y="${top+13}" class="lb nm">${esc(t.name)}（${leafIds(t.id).length}件を表示中）</text>`;
       pick(t,c,top);return}
+    if(V.showParBar===false&&!t.collapsed)return;
     const cp=t.cPlan||S.colors.parent,ca=t.cAct||S.colors.act,tip=tipOf(t,c);
     const sg=c.segs&&c.segs.length?c.segs:[[c.ps,c.pe]],tot=sg.reduce((s2,[a2,b2])=>s2+X(b2+1)-X(a2),0);let left=tot*c.prog/100,pp='';
     for(const[a2,b2]of sg){const s1=X(a2),s2=X(b2+1),sw=s2-s1;pp+=`<rect x="${s1}" y="${top+4}" width="${sw}" height="7" fill="${cp}"/><path d="M${s1} ${top+11}v5l${Math.min(6,sw/2)} -5zM${s2} ${top+11}v5l-${Math.min(6,sw/2)} -5z" fill="${cp}"/>`;
@@ -918,7 +935,7 @@ function updateUI(){
   const wb=$('#whob');wb.textContent=ME?`${ME.name}（${ROLE[ME.role]}）`:'閲覧のみ';wb.className='whob'+(isAdmin()?' adm-b':'');
   $('#b-me').textContent=FS.moved?'新しい場所へ':ME?'ログアウト':'ログイン';$('#b-me').title=ME?'ログアウトして閲覧のみに戻ります':'ログインして担当分を編集します';
   $('#v-sort').value=V.sort;$('#v-show').value=V.show||'both';$('#v-kind').value=V.kind;
-  $('#v-crit').checked=V.showCrit!==false;$('#v-lw').checked=V.lblWait;$('#v-lp').checked=V.showPlanLinks;$('#v-la').checked=V.showActLinks;$('#v-ln').checked=V.lblName;$('#v-ls').checked=V.lblStart;$('#v-le').checked=V.lblEnd;$('#v-lact').checked=V.lblAct;
+  $('#v-crit').checked=V.showCrit!==false;$('#v-lw').checked=V.lblWait;$('#v-lp').checked=V.showPlanLinks;$('#v-la').checked=V.showActLinks;$('#v-ln').checked=V.lblName;$('#v-ls').checked=V.lblStart;$('#v-le').checked=V.lblEnd;$('#v-lact').checked=V.lblAct;$('#v-pbar').checked=V.showParBar!==false;$('#v-subs').checked=V.showSubs!==false;$('#v-week').checked=!!V.shadeWeek;
   const maxD=maxDepth(),cur=curLevel();
   $('#olv').innerHTML=Array.from({length:maxD+1},(_,i)=>`<button class="btn olv${cur===i+1?' cur':''}" data-lv="${i+1}" title="階層${i+1}まで表示（それより下は畳む）">${i+1}</button>`).join('');
   $('#zoom').value=DW;$('#b-undo').disabled=!undoS.length;$('#b-redo').disabled=!redoS.length;
@@ -1804,7 +1821,13 @@ on('#v-sort','change',e=>{state.view.sort=e.target.value;saveLocalView();renderA
 on('#v-show','change',e=>{state.view.show=e.target.value;saveLocalView();renderAll(true)});
 on('#v-kind','change',e=>{state.view.kind=e.target.value;mode.last=null;renderChart()});
 const vt=(id,k)=>on(id,'change',e=>{state.view[k]=e.target.checked;saveLocalView();renderChart()});
-vt('#v-crit','showCrit');vt('#v-lp','showPlanLinks');vt('#v-la','showActLinks');vt('#v-ln','lblName');vt('#v-ls','lblStart');vt('#v-le','lblEnd');vt('#v-lact','lblAct');vt('#v-lw','lblWait');
+vt('#v-crit','showCrit');vt('#v-lp','showPlanLinks');vt('#v-la','showActLinks');vt('#v-ln','lblName');vt('#v-ls','lblStart');vt('#v-le','lblEnd');vt('#v-lact','lblAct');vt('#v-lw','lblWait');vt('#v-pbar','showParBar');
+on('#v-subs','change',e=>{state.view.showSubs=e.target.checked;saveLocalView();renderAll(true)});
+on('#v-week','change',e=>{state.view.shadeWeek=e.target.checked;saveLocalView();renderAll(true)});
+/* 表示の設定：ボタンで開閉。外側を押すか Esc で閉じる（変更はその場で反映） */
+on('#b-view','click',e=>{e.stopPropagation();$('#vpop').classList.toggle('open')});
+document.addEventListener('pointerdown',e=>{const p=$('#vpop');if(p.classList.contains('open')&&!e.target.closest('#vpw'))p.classList.remove('open')});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#vpop').classList.remove('open')});
 on('#zoom','input',e=>{const d0=R.from+(rbody.scrollLeft+rbody.clientWidth/2)/DW;DW=+e.target.value;state.view.dw=DW;renderHead();renderChart();rbody.scrollLeft=(d0-R.from)*DW-rbody.clientWidth/2});
 on('#zoom','change',()=>saveLocalView());
 const goToday=()=>{rbody.scrollLeft=Math.max(0,X(todayN)-rbody.clientWidth/3)};
