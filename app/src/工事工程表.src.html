@@ -65,6 +65,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .c input:hover{border-color:var(--line)}
 .c input:focus{border-color:var(--acc);background:var(--field);outline:none}
 .c input[type=number]{text-align:right}
+.offln{stroke-width:1.5;stroke-dasharray:3 3;opacity:.7}
 .c.sum{color:var(--mut);font-style:italic}
 .c input.pc{text-align:center;padding:0 1px}
 .c input[type=date]{padding:0 2px;font-variant-numeric:tabular-nums}
@@ -499,6 +500,9 @@ function resolve(rule,cal,vis,hid,key){
   return n?out:null;
 }
 /* 区間の和集合（親＝子の水平投影）。間が休日だけなら1本につなげる */
+/* 作業不能期間の対象の工程は、開始〜完了のうち作業できる日だけを区間にする（バーは区間ごとに描き、作業不能期間はすき間になる） */
+function workSegs(a,b,cal){if(!cal||b<a)return[[a,b]];const out=[];let s=null;for(let n=a;n<=b;n++){if(off(n)){if(s!=null){out.push([s,n-1]);s=null}}else if(s==null)s=n}if(s!=null)out.push([s,b]);return out.length?out:[[a,b]]}
+const offNote=c=>c&&c.offd>0?`全体 ${c.pe-c.ps+1}日（作業 ${c.dur}日＋作業不能期間 ${c.offd}日）`:'';
 function mergeSegs(list,cal){
   const a=list.filter(x=>x&&x[0]!=null&&x[1]!=null).map(x=>[x[0],x[1]]).sort((p,q)=>p[0]-q[0]),out=[];
   for(const g of a){const l=out[out.length-1];
@@ -548,7 +552,7 @@ function comp(t,vis){
     {const k1=parse(state.settings.koji.from);if(!err&&k1!=null&&ps<k1)err=`工期（自） ${fmt(k1)} より前に始まります（${k1-ps}日）`}
     const as=parse(t.as),ae=as!=null?parse(t.ae):null;
     r={parent:false,ps,pe,dur:t.anchor==='both'?span(ps,pe,cal):dur,prog:clamp(+t.prog||0,0,100),as,ae,aeDraw:as!=null?(ae!=null?Math.max(ae,as):Math.max(as,todayN)):null,cal,err,work:D.work,rain:D.rain,rate:D.rate,pt:D.pt,src:D.src,derr:D.err||'',anchor:t.anchor,back,pin:!!t.pin};
-    r.segs=[[ps,pe]];r.asegs=as!=null?[[as,r.aeDraw]]:[];
+    r.segs=workSegs(ps,pe,cal);r.asegs=as!=null?[[as,r.aeDraw]]:[];r.offd=cal?(pe-ps+1)-span(ps,pe,cal):0;
   }
   vis.delete(t.id);C[t.id]=r;return r;
 }
@@ -764,7 +768,7 @@ function cellsHTML(t,wbs,depth,si){
 ${P||t.frame?ro(''):t.durSrc==='buk'?`<div class="c auto" title="${esc('歩掛ごとの日当り施工量から計算（詳細設定の「歩掛」で変更）\n'+durText(t,c))}"><input type="number" value="${c.work>0&&+t.qty>0?f2(+t.qty/c.work):''}" readonly></div>`:`<div class="c${t.durSrc==='yield'?'':' auto'}"><input type="number" min="0" step="any" data-k="daily" value="${esc(t.daily)}"${RD} title="日当り施工量（数量÷日当り施工量で施工日数を計算）"></div>`}
 ${P||t.frame?ro(''):`<div class="c"><input type="number" min="1" data-k="parties" value="${esc(t.parties)}"${RD}></div>`}
 ${t.frame?ro(''):P?(()=>{const L=leafIds(t.id).map(x=>C[x]).filter(x=>x&&x.work!=null);if(!L.length)return ro('');const w=L.reduce((a,x)=>a+x.work,0),d=L.reduce((a,x)=>a+x.dur,0);return`<div class="c ro num sum" title="${esc(`下位の工程の合計（${L.length}件）\n施工日数 ${f2(w)}日、暦日数の合計 ${d}日\n暦日数の欄は全体の期間（開始〜完了）`)}">${f2(w)}</div>`})():`<div class="c${t.durSrc==='work'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="0" step="any" data-k="work" value="${c.work!=null?f2(c.work):''}"${RD}${c.src==='yield'||c.src==='buk'?' readonly':''}></div>`}
-${P?ro(c.dur,'num'):`<div class="c${t.frame||t.durSrc==='fixed'||t.anchor==='both'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="1" data-k="dur" value="${c.dur}"${RD}></div>`}
+${P?ro(c.dur,'num'):`<div class="c${t.frame||t.durSrc==='fixed'||t.anchor==='both'?'':' auto'}" title="${esc(durText(t,c)+(c.offd>0?'\n'+offNote(c):''))}"><input type="number" min="1" data-k="dur" value="${c.dur}"${RD}></div>`}
 ${P?ro(fmt(c.ps)):`<div class="c${c.pin?' pin':c.back?' rev':sRel?' rel':''}" title="${esc(sTip)}">${di('ps',c.ps)}</div>`}
 ${P?ro(fmt(c.pe)):`<div class="c${c.back?' rev':eRel?' rel':''}${c.over?' over':''}" title="${esc(eTip+(c.dl!=null?'\n'+ruleText(t,'deadline')+(c.over?`\n→ ${c.over}日超過`:'\n→ 期限内'):''))}">${di('pe',c.pe)}</div>`}
 ${P?ro(fmt(c.as)):`<div class="c">${di('as',parse(t.as))}</div>`}
@@ -823,15 +827,21 @@ function renderChart(){
     if(k1!=null&&k1>=R.from&&k1<=R.to)lb+=`<line x1="${X(k1)}" x2="${X(k1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k1)+3}" y="${TOTH+16}" class="kkt">工期始 ${md(k1)}</text>`;
     if(k2!=null&&k2>=R.from&&k2<=R.to)lb+=`<line x1="${X(k2+1)}" x2="${X(k2+1)}" y1="0" y2="${H}" class="kki"/><text x="${X(k2+1)-3}" y="${TOTH+16}" class="kkt" text-anchor="end">工期末 ${md(k2)}</text>`}
   if(todayN>=R.from&&todayN<=R.to)bg+=`<rect x="${X(todayN)}" y="0" width="${DW}" height="${H}" class="todayc"/><line x1="${X(todayN)+DW/2}" x2="${X(todayN)+DW/2}" y1="0" y2="${H}" class="todayl"/>`;
-  const tipOf=(t,c)=>esc(`${WBS[t.id]} ${t.name}${t.spec?' '+t.spec:''}${t.qty!==''&&t.qty!=null?`　${t.qty}${t.unit}`:''}\n予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}（暦日 ${c.dur}日）`+(!c.parent&&c.work!=null?`\n${durText(t,c)}`:'')+(c.as!=null?`\n実施 ${fmt(c.as)} 〜 ${c.ae!=null?fmt(c.ae):'作業中'}`:'')+`\n進捗 ${Math.round(c.prog)}%`+(c.dl!=null?`\n期限 ${fmt(c.dl)}${c.over?`（${c.over}日超過）`:'（期限内）'}`:'')+(c.err?'\n⚠ '+c.err:'')+(V.showCrit!==false&&CP.bars.has(t.id)?'\nクリティカルパス上のタスク':'')+(c.pin?'\nアンカー（日程の基準）':c.back?'\n逆算（アンカーにつながる後の工程に合わせて決定）':''));
+  const tipOf=(t,c)=>esc(`${WBS[t.id]} ${t.name}${t.spec?' '+t.spec:''}${t.qty!==''&&t.qty!=null?`　${t.qty}${t.unit}`:''}\n予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}（暦日 ${c.dur}日）${!c.parent&&c.offd>0?'\n'+offNote(c):''}`+(!c.parent&&c.work!=null?`\n${durText(t,c)}`:'')+(c.as!=null?`\n実施 ${fmt(c.as)} 〜 ${c.ae!=null?fmt(c.ae):'作業中'}`:'')+`\n進捗 ${Math.round(c.prog)}%`+(c.dl!=null?`\n期限 ${fmt(c.dl)}${c.over?`（${c.over}日超過）`:'（期限内）'}`:'')+(c.err?'\n⚠ '+c.err:'')+(V.showCrit!==false&&CP.bars.has(t.id)?'\nクリティカルパス上のタスク':'')+(c.pin?'\nアンカー（日程の基準）':c.back?'\n逆算（アンカーにつながる後の工程に合わせて決定）':''));
   const pick=(t,c,top)=>{const x1=X(c.ps),w=X(c.pe+1)-x1;
     if(mode.rel&&mode.last===t.id)fg+=`<rect x="${x1-3}" y="${top+1}" width="${w+6}" height="${HALF-1}" rx="4" class="pick"/>`;
     if(mode.path&&mode.last===t.id){if(V.kind==='plan'||c.as==null)fg+=`<rect x="${x1-3}" y="${top+(V.kind==='plan'?1:HALF)}" width="${w+6}" height="${HALF-1}" rx="4" class="pick"/>`;else fg+=`<rect x="${X(c.as)-3}" y="${top+HALF}" width="${X(c.aeDraw+1)-X(c.as)+6}" height="${HALF-1}" rx="4" class="pick"/>`}};
   /* 子のタスクバー（畳んだ親の行にも同じ形で描く） */
   const leafBar=(t,top,inRow)=>{
     const c=C[t.id],cp=t.cPlan||S.colors.plan,ca=t.cAct||S.colors.act,tip=tipOf(t,c),x1=X(c.ps),x2=X(c.pe+1),w=x2-x1;
-    let hb='';if(c.cal)for(let d=c.ps;d<=c.pe;d++)if(off(d))hb+=`<rect x="${X(d)}" y="${top+3}" width="${DW}" height="${HALF-5}" class="hb"/>`;
-    fg+=`<g data-part="plan" data-lid="${t.id}"${inRow?' data-sub="1"':''} class="${c.err?'err':''}"><title>${tip}</title><rect class="pb" x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" fill="${cp}"/>${hb}${c.prog>0?`<rect x="${x1}" y="${top+3}" width="${w*c.prog/100}" height="${HALF-5}" rx="3" class="pg"/>`:''}${c.over?(()=>{const o1=X(Math.max(c.ps,c.dl+1));return `<rect x="${o1}" y="${top+3}" width="${x2-o1}" height="${HALF-5}" fill="url(#ovh)"/><rect x="${o1+.75}" y="${top+3.75}" width="${Math.max(0,x2-o1-1.5)}" height="${HALF-6.5}" class="ovl"/>`})():''}${inRow?`<rect x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" class="sepl"/>`:''}</g>`;
+    const sg=c.segs&&c.segs.length>1?c.segs:null;let body;
+    if(sg){/* 作業不能期間をまたぐ：作業できる区間だけにバーを描き、区間の間は細い破線でつなぐ（1本の工程のまま） */
+      const tw=sg.reduce((a,[p1,p2])=>a+X(p2+1)-X(p1),0);let left=tw*c.prog/100;body=`<rect x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" fill="transparent"/>`;
+      sg.forEach(([p1,p2],k)=>{const s1=X(p1),s2=X(p2+1);body+=`<rect class="pb" x="${s1}" y="${top+3}" width="${s2-s1}" height="${HALF-5}" rx="3" fill="${cp}"/>`;
+        if(left>0){const f=Math.min(s2-s1,left);body+=`<rect x="${s1}" y="${top+3}" width="${f}" height="${HALF-5}" rx="3" class="pg"/>`;left-=f}
+        if(k<sg.length-1){const n1=X(sg[k+1][0]);body+=`<line x1="${s2}" x2="${n1}" y1="${top+HALF/2+1}" y2="${top+HALF/2+1}" class="offln" stroke="${cp}"/>`}})}
+    else body=`<rect class="pb" x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" fill="${cp}"/>${c.prog>0?`<rect x="${x1}" y="${top+3}" width="${w*c.prog/100}" height="${HALF-5}" rx="3" class="pg"/>`:''}`;
+    fg+=`<g data-part="plan" data-lid="${t.id}"${inRow?' data-sub="1"':''} class="${c.err?'err':''}"><title>${tip}</title>${body}${c.over?(()=>{const o1=X(Math.max(c.ps,c.dl+1));return `<rect x="${o1}" y="${top+3}" width="${x2-o1}" height="${HALF-5}" fill="url(#ovh)"/><rect x="${o1+.75}" y="${top+3.75}" width="${Math.max(0,x2-o1-1.5)}" height="${HALF-6.5}" class="ovl"/>`})():''}${inRow?`<rect x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" class="sepl"/>`:''}</g>`;
     if(c.dl!=null){const xd=X(c.dl+1);fg+=`<g class="dlm"><title>${esc(ruleText(t,'deadline')+(c.over?`\n${c.over}日超過`:'\n期限内'))}</title><line x1="${xd}" x2="${xd}" y1="${top}" y2="${top+HALF}"/><path d="M${xd} ${top}h-6l3 4z"/></g>`}
     if(c.as!=null){const a1=X(c.as),a2=X(c.aeDraw+1),open=c.ae==null;
       fg+=`<g data-part="act" data-lid="${t.id}"${inRow?' data-sub="1"':''}><title>${tip}</title><rect x="${a1}" y="${top+HALF+2}" width="${a2-a1}" height="${HALF-5}" rx="3" fill="${ca}"${open?` fill-opacity=".45" stroke="${ca}" stroke-dasharray="4 2"`:''}/></g>`;
