@@ -65,6 +65,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .c input:hover{border-color:var(--line)}
 .c input:focus{border-color:var(--acc);background:var(--field);outline:none}
 .c input[type=number]{text-align:right}
+.c.sum{color:var(--mut);font-style:italic}
 .c input.pc{text-align:center;padding:0 1px}
 .c input[type=date]{padding:0 2px;font-variant-numeric:tabular-nums}
 .c.ro{color:var(--mut);padding-left:7px;font-variant-numeric:tabular-nums}
@@ -251,7 +252,7 @@ table.ut td{border-top:1px solid var(--line2)}
       <button class="btn" id="b-up" title="上へ">↑</button>
       <button class="btn" id="b-down" title="下へ">↓</button>
       <button class="btn" id="b-pin" title="選んでいる工程をアンカー（日程の基準）にする／外す。前後の関連付けした工程はアンカーに合わせて順算・逆算で決まります">⚓ アンカー</button>
-      <button class="btn" id="b-per" title="選んでいる工程を、1本の行の中で2〜3の期間（分かれたバー）に分ける／期間を追加する・1本に戻す">期間を分ける</button>
+      <button class="btn" id="b-per" title="選んでいる工程（細別など）の下に下位工程（設置・撤去など）を作ります。細別は下位工程の合計になります">下位工程を作る</button>
       <button class="btn" id="b-detail" title="選んでいるタスクの詳細設定（バーの右クリック・ダブルクリック、表の No. のダブルクリックでも開きます）">詳細設定</button>
       <button class="btn danger" id="b-del">削除</button>
     </div>
@@ -797,7 +798,7 @@ function fill(o){
   return{title:o.title??'',sample:!!o.sample,savedAt:o.savedAt||0,
     settings:Object.assign({},d.settings,o.settings||{},{colors:Object.assign({},d.settings.colors,(o.settings||{}).colors||{}),koji:Object.assign({},KOJI0,(o.settings||{}).koji||{}),periods:(o.settings&&o.settings.periods)||[]}),
     view:Object.assign({},d.view,o.view||{}),
-    tasks:fixProc((o.tasks||[]).map(t=>{const x=Object.assign(T(t.id||uid(),'',null),t);if(t.durSrc==null)x.durSrc='fixed';x.proc=t.proc??'';if(x.frame&&FRAME_OLD[x.frame]===x.name)x.name=FRAME[x.frame];x.startRule=migrateRule(x.startRule);x.endRule=migrateRule(x.endRule);return x})),links:o.links||[]};
+    tasks:fixProc((o.tasks||[]).map(t=>{const x=Object.assign(T(t.id||uid(),'',null),t);if(t.durSrc==null)x.durSrc='fixed';if(x.per)delete x.per;x.proc=t.proc??'';if(x.frame&&FRAME_OLD[x.frame]===x.name)x.name=FRAME[x.frame];x.startRule=migrateRule(x.startRule);x.endRule=migrateRule(x.endRule);return x})),links:o.links||[]};
 }
 /* 工程区分を番号にそろえる。以前は親の区分を子が引き継いでいたので、空の子は親の番号にする */
 function fixProc(ts){const by={};for(const t of ts)by[t.id]=t;const memo={},get=(t,g=0)=>{if(memo[t.id]!=null)return memo[t.id];const v=t.proc;let n;if(typeof v==='number'||String(v??'').trim())n=procNum(v);else n=t.parent&&by[t.parent]&&g<99?get(by[t.parent],g+1):1;return memo[t.id]=n};for(const t of ts)t.proc=get(t);for(const t of ts)t.proc=memo[t.id];return ts}
@@ -808,9 +809,9 @@ const nm=id=>{const t=byId[id];return t?((WBS[id]?WBS[id]+' ':'')+t.name):'（�
 const calOf=t=>t.restricted!==false;
 /* 日数：施工日数＝数量÷日当り施工量、雨休日数＝切り上げ(施工日数×雨休率)、暦日数＝切り上げ((施工日数＋雨休日数)÷班数) */
 const rateOf=t=>{const v=t.rainRate;return v===''||v==null||!isFinite(+v)?(+state.settings.koji.rainRate||0):+v};
-/* 期間（per）は親（細別）の歩掛を使い、どれを日数に使うかは期間ごとに bukUse で持つ */
-function bukOf(t){if(t.buk&&t.buk.length)return t.buk;const P=t.per&&byId[t.parent];if(!P||!(P.buk||[]).length)return[];return P.buk.map((b,i)=>Object.assign({},b,{use:t.bukUse?!!t.bukUse[i]:!!b.use}))}
-const perP=t=>{const k=t&&kids[t.id];return!!(k&&k.length&&k.every(x=>x.per))};
+/* 下位工程（bukUse を持つ子）は親（細別）の歩掛を使い、どれを日数に使うかは下位工程ごとに bukUse で持つ */
+function bukOf(t){if(t.buk&&t.buk.length)return t.buk;const P=t.bukUse&&byId[t.parent];if(!P||!(P.buk||[]).length)return[];return P.buk.map((b,i)=>Object.assign({},b,{use:t.bukUse?!!t.bukUse[i]:!!b.use}))}
+const subP=t=>{const k=t&&kids[t.id];return!!(k&&k.length&&k.some(x=>Array.isArray(x.bukUse)))};
 function calcDur(t){
   if(t.frame){const kv=Math.round(+state.settings.koji[t.frame]||0);return{dur:kv>0?kv:Math.max(1,Math.round(+t.dur||1)),work:null,rain:0,rate:0,pt:1,src:'frame'}}
   const rate=rateOf(t),pt=Math.max(1,Math.round(+t.parties||1)),fix=Math.max(1,Math.round(+t.dur||1));
@@ -1036,7 +1037,6 @@ function inheritToChild(P,ch,isNew){
 function sortSib(a){return a}
 function buildRows(){
   const out=[];FULL=[];WBS={};
-  for(const t of state.tasks)if(perP(t))t.collapsed=true;
   const walk=(p,depth,pre,hid)=>{sortSib((kids[p]||[]).slice()).forEach((t,i)=>{const w=pre?pre+'.'+(i+1):String(i+1);WBS[t.id]=w;FULL.push(t);if(!hid)out.push({t,depth,wbs:w});walk(t.id,depth+1,w,hid||t.collapsed)})};
   const grp=state.view.sort==='proc';
   walk('root',0,'',grp);
@@ -1055,7 +1055,7 @@ const grpOf=t=>procNum(t.proc);
 function originOf(t){let x=t,g=0;while(x.src&&byId[x.src]&&g++<99)x=byId[x.src];return x}
 function groupRows(out){
   const pos=new Map(FULL.map((t,i)=>[t.id,i])),op=t=>pos.get(originOf(t).id)??pos.get(t.id);
-  const leaves=FULL.filter(t=>!t.frame&&(perP(t)||!(kids[t.id]||[]).length&&!t.per)),M=new Map();
+  const leaves=FULL.filter(t=>!(kids[t.id]||[]).length&&!t.frame),M=new Map();
   for(const t of leaves){const k=grpOf(t);if(!M.has(k))M.set(k,[]);M.get(k).push(t)}
   for(const ts of M.values())ts.sort((a,b)=>op(a)-op(b)||pos.get(a.id)-pos.get(b.id));
   const keys=[...M.keys()].sort((a,b)=>a-b);
@@ -1113,7 +1113,7 @@ const lockTip=(t,mine)=>mine?'':` title="${esc(t.who?`担当：${t.who}（${ME?'
 /* 畳んだ行に子のバーが2本以上：見出し＋子ごとの入力行（番号の色＝チャートのバーの番号の色） */
 function mrowHTML(r){
   const t=r.t,c=C[t.id];
-  return `<div class="mrow" style="height:${r.h}px" data-pid="${t.id}"><div class="mhead${t.id===sel?' sel':''}" data-id="${t.id}"><span class="grip" title="ドラッグで上下に移動">⠿</span><span style="padding-left:${r.depth*16}px"></span>${perP(t)?'<span class="tg0" title="期間を分けた工程"></span>':'<button class="tg" data-tg title="折りたたみ">▸</button>'}<b>${esc(t.name)}</b>　${perP(t)?`${t.qty!==''?esc(t.qty)+esc(t.unit)+'　':''}期間${r.subs.length}つ`:r.subs.length+'本のバー'}　予定 ${md(c.ps)}〜${md(c.pe)}（${c.dur}日）</div>`+
+  return `<div class="mrow" style="height:${r.h}px" data-pid="${t.id}"><div class="mhead${t.id===sel?' sel':''}" data-id="${t.id}"><span class="grip" title="ドラッグで上下に移動">⠿</span><span style="padding-left:${r.depth*16}px"></span><button class="tg" data-tg title="折りたたみ">▸</button><b>${esc(t.name)}</b>　${r.subs.length}本のバー　予定 ${md(c.ps)}〜${md(c.pe)}（${c.dur}日）</div>`+
     r.subs.map(x=>{const mine=owns(x.id),si=SUBI[x.id];return `<div class="row sub${x.id===sel?' sel':''}${mine?(isAdmin()?'':' mine'):' lock'}" data-id="${x.id}" style="--hc:${si.col}"${lockTip(x,mine)}>${cellsHTML(x,WBS[x.id],r.depth+1,si)}</div>`}).join('')+`</div>`;
 }
 function cellsHTML(t,wbs,depth,si){
@@ -1133,7 +1133,7 @@ function cellsHTML(t,wbs,depth,si){
 <div class="c"><input data-k="unit" value="${esc(t.unit)}"${RD}></div>
 ${P||t.frame?ro(''):t.durSrc==='buk'?`<div class="c auto" title="${esc('歩掛ごとの日当り施工量から計算（詳細設定の「歩掛」で変更）\n'+durText(t,c))}"><input type="number" value="${c.work>0&&+t.qty>0?f2(+t.qty/c.work):''}" readonly></div>`:`<div class="c${t.durSrc==='yield'?'':' auto'}"><input type="number" min="0" step="any" data-k="daily" value="${esc(t.daily)}"${RD} title="日当り施工量（数量÷日当り施工量で施工日数を計算）"></div>`}
 ${P||t.frame?ro(''):`<div class="c"><input type="number" min="1" data-k="parties" value="${esc(t.parties)}"${RD}></div>`}
-${P||t.frame?ro(''):`<div class="c${t.durSrc==='work'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="0" step="any" data-k="work" value="${c.work!=null?f2(c.work):''}"${RD}${c.src==='yield'||c.src==='buk'?' readonly':''}></div>`}
+${t.frame?ro(''):P?(()=>{const L=leafIds(t.id).map(x=>C[x]).filter(x=>x&&x.work!=null);if(!L.length)return ro('');const w=L.reduce((a,x)=>a+x.work,0),d=L.reduce((a,x)=>a+x.dur,0);return`<div class="c ro num sum" title="${esc(`下位の工程の合計（${L.length}件）\n施工日数 ${f2(w)}日、暦日数の合計 ${d}日\n暦日数の欄は全体の期間（開始〜完了）`)}">${f2(w)}</div>`})():`<div class="c${t.durSrc==='work'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="0" step="any" data-k="work" value="${c.work!=null?f2(c.work):''}"${RD}${c.src==='yield'||c.src==='buk'?' readonly':''}></div>`}
 ${P?ro(c.dur,'num'):`<div class="c${t.frame||t.durSrc==='fixed'||t.anchor==='both'?'':' auto'}" title="${esc(durText(t,c))}"><input type="number" min="1" data-k="dur" value="${c.dur}"${RD}></div>`}
 ${P?ro(fmt(c.ps)):`<div class="c${c.pin?' pin':c.back?' rev':sRel?' rel':''}" title="${esc(sTip)}">${di('ps',c.ps)}</div>`}
 ${P?ro(fmt(c.pe)):`<div class="c${c.back?' rev':eRel?' rel':''}${c.over?' over':''}" title="${esc(eTip+(c.dl!=null?'\n'+ruleText(t,'deadline')+(c.over?`\n→ ${c.over}日超過`:'\n→ 期限内'):''))}">${di('pe',c.pe)}</div>`}
@@ -1226,7 +1226,7 @@ function renderChart(){
       for(const l of ls){const a=C[l],ov=ls.some(o=>o!==l&&C[o].ps<=a.pe&&C[o].pe>=a.ps);leafBar(byId[l],top,ov?'row':'lbl')}
       if(V.lblStart)lb+=`<text x="${x1-4}" y="${top+13}" class="lb" text-anchor="end">${md(c.ps)}</text>`;
       let lx=x2+4;if(V.lblEnd){lb+=`<text x="${lx}" y="${top+13}" class="lb">${md(c.pe)}</text>`;lx+=md(c.pe).length*6.3+6}
-      if(V.lblName)lb+=`<text x="${lx}" y="${top+13}" class="lb nm">${esc(t.name)}${perP(t)?'':`（${leafIds(t.id).length}件を表示中）`}</text>`;
+      if(V.lblName)lb+=`<text x="${lx}" y="${top+13}" class="lb nm">${esc(t.name)}（${leafIds(t.id).length}件を表示中）</text>`;
       pick(t,c,top);return}
     if(V.showParBar===false&&!t.collapsed)return;
     const cp=t.cPlan||S.colors.parent,ca=t.cAct||S.colors.act,tip=tipOf(t,c);
@@ -1323,10 +1323,10 @@ function updateUI(){
 
 /* ---------- アウトライン（Excelのように階層ごとに畳む） ---------- */
 const depthOf=t=>{let d=0,p=t.parent;while(p&&d<99){d++;p=byId[p]?.parent}return d};
-function maxDepth(){let m=0;for(const t of state.tasks)if(!(kids[t.id]||[]).length)m=Math.max(m,depthOf(t)-(t.per?1:0));return m}
-function curLevel(){const ps=state.tasks.filter(t=>(kids[t.id]||[]).length&&!perP(t));if(!ps.length)return 1;
+function maxDepth(){let m=0;for(const t of state.tasks)if(!(kids[t.id]||[]).length)m=Math.max(m,depthOf(t));return m}
+function curLevel(){const ps=state.tasks.filter(t=>(kids[t.id]||[]).length);if(!ps.length)return 1;
   for(let n=1;n<=maxDepth()+1;n++)if(ps.every(t=>t.collapsed===(depthOf(t)>=n-1)))return n;return 0}
-function setLevel(n){for(const t of state.tasks)if((kids[t.id]||[]).length&&!perP(t))t.collapsed=depthOf(t)>=n-1;saveLocalView();renderAll(true)}
+function setLevel(n){for(const t of state.tasks)if((kids[t.id]||[]).length)t.collapsed=depthOf(t)>=n-1;saveLocalView();renderAll(true)}
 
 /* ---------- 変更・履歴・保存 ---------- */
 /* 元に戻す／やり直し：操作ごとに「前・後」を記録し、その操作で変わった部分だけを今の状態に戻す（ほかの人の更新は消さない） */
@@ -1337,7 +1337,7 @@ function applyContent(d){const col=new Set(state.tasks.filter(t=>t.collapsed).ma
 function sameAsSaved(){if(!PROJ)return false;const a=canon(curData()),b=canon(JSON.parse(PROJ.baseText)),js=x=>JSON.stringify(x);return a.title===b.title&&js(a.tasks)===js(b.tasks)&&js(a.links)===js(b.links)&&js(a.settings)===js(b.settings)}
 function stepUndo(from,to){const r=merge3(JSON.parse(from),JSON.parse(to),curData());applyContent(r.data);recompute();fixParentLinks();dirty=!sameAsSaved();renderAll(true)}
 function markDirty(){dirty=true}
-function mutate(fn,defer){const pre=snap();fn();normalize();index();if(fixPeriods()){normalize();index()}fixParentLinks();pushUndo(pre,snap());markDirty();if(defer)setTimeout(()=>renderAll(),0);else renderAll()}
+function mutate(fn,defer){const pre=snap();fn();normalize();index();fixParentLinks();pushUndo(pre,snap());markDirty();if(defer)setTimeout(()=>renderAll(),0);else renderAll()}
 function undo(){if(RO||!PROJ)return;const e=undoS.pop();if(!e){toast('元に戻せる操作はありません');return}redoS.push(e);stepUndo(e.post,e.pre);toast('元に戻しました（Ctrl+Y でやり直し）')}
 function redo(){if(RO||!PROJ)return;const e=redoS.pop();if(!e){toast('やり直せる操作はありません');return}undoS.push(e);stepUndo(e.pre,e.post);toast('やり直しました')}
 function toast(m){const e=$('#toast');e.textContent=m;e.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>e.classList.remove('show'),2600)}
@@ -1464,82 +1464,76 @@ function openSplit(id){
   $('#mbox').onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing&&!ok.disabled){e.preventDefault();ok.click()}};
   setTimeout(()=>{inp.focus();inp.select()},0);
 }
-/* ---------- 1タスクの複数期間（分かれたバー） ----------
-   細別（親）の下に期間（per:true の子タスク）を置き、細別の1行の中に期間のバーを並べる。
-   期間は末端のタスクなので、関連付け・クリティカルパス・ドラッグはそのまま使える。歩掛は細別に置き、期間は bukUse で使う歩掛を選ぶ。
-   期間は3つまで（工程計画作成支援システムの形式） */
-const PER_MAX=3;
-const PER_KEYS=['durSrc','daily','work','dur','parties','rainRate','restricted','cPlan','cAct','who','proc'];
-function periodDurFor(T,q){const tq=+T.qty,r=tq>0&&q!==''&&+q>=0?+q/tq:1;return{work:T.durSrc==='work'?Math.round((+T.work||0)*r*100)/100:T.work,dur:T.durSrc==='fixed'?Math.max(1,Math.round((+T.dur||1)*r)):T.dur}}
-function newPeriod(T,name,q,after){
-  const x=T_(name,T,q);x.startRule=rel(ent(after.id));x.endRule={type:'fixed',date:''};x.anchor='start';return x}
-function T_(name,S0,q){const x=T(uid(),name,S0.id,{per:true,buk:[],qty:q,unit:S0.unit,spec:''});for(const k of PER_KEYS)x[k]=JSON.parse(JSON.stringify(S0[k]??''));
-  Object.assign(x,periodDurFor(S0,q));x.bukUse=(S0.buk||[]).map(b=>!!b.use);return x}
-function doSplitPeriods(id,defs,how){
-  mutate(()=>{const T=byId[id],c=C[id];const ps=[];
+/* ---------- 下位工程（細別の下に作り、細別は合計になる） ----------
+   細別（親）の下に普通の子タスクとして下位工程を作る。下位工程は bukUse を持ち、細別の歩掛のうち日数に使うものを選ぶ。
+   細別の行は子の合計：施工日数は下位工程の合計、バーは下位工程の水平投影（工程計画作成支援システムの「期間」には XML 出力時に対応させる） */
+const SUB_KEYS=['durSrc','daily','work','dur','parties','rainRate','restricted','cPlan','cAct','who','proc'];
+function subDurFor(T,q){const tq=+T.qty,r=tq>0&&q!==''&&+q>=0?+q/tq:1;return{work:T.durSrc==='work'?Math.round((+T.work||0)*r*100)/100:T.work,dur:T.durSrc==='fixed'?Math.max(1,Math.round((+T.dur||1)*r)):T.dur}}
+function mkSub(name,S0,q){const x=T(uid(),name,S0.id,{buk:[],qty:q,unit:S0.unit,spec:''});for(const k of SUB_KEYS)x[k]=JSON.parse(JSON.stringify(S0[k]??''));
+  Object.assign(x,subDurFor(S0,q));x.bukUse=(S0.buk||[]).map(b=>!!b.use);return x}
+function newSub(T,name,q,after){const x=mkSub(name,T,q);x.startRule=rel(ent(after.id));x.endRule={type:'fixed',date:''};x.anchor='start';return x}
+function doMakeSubs(id,defs,how){
+  mutate(()=>{const T=byId[id];const ps=[];
     defs.forEach((d,j)=>{let x;
-      if(!j){x=T_(d.name,T,d.qty);for(const k of['startRule','endRule','anchor','deadline'])x[k]=JSON.parse(JSON.stringify(T[k]??null));if(T.pin){x.pin=T.pin}x.as=T.as;x.ae=T.ae;x.prog=T.prog;if(T.anchor==='both'){x.anchor='start'}}
-      else x=newPeriod(T,d.name,d.qty,ps[j-1]);
+      if(!j){x=mkSub(d.name,T,d.qty);for(const k of['startRule','endRule','anchor','deadline'])x[k]=JSON.parse(JSON.stringify(T[k]??null));if(T.pin)x.pin=T.pin;x.as=T.as;x.ae=T.ae;x.prog=T.prog;if(T.anchor==='both')x.anchor='start'}
+      else x=newSub(T,d.name,d.qty,ps[j-1]);
       ps.push(x)});
-    delete T.pin;T.as='';T.ae='';T.prog=0;T.collapsed=true;
-    /* この工程を基準にしていた工程・パスを期間に付け替える：開始は1つ目、完了は 数量を分けた→最後／同じ数量（設置・撤去など）→1つ目 */
+    delete T.pin;T.as='';T.ae='';T.prog=0;T.collapsed=false;
+    /* この工程を基準にしていた工程・パスを下位工程に付け替える：開始は1つ目、完了は 数量を分けた→最後／同じ数量（設置・撤去など）→1つ目 */
     const pS=ps[0],pE=how==='split'?ps[ps.length-1]:ps[0];
     for(const o of state.tasks){if(o.id===id)continue;for(const k of['startRule','endRule','deadline']){const r=o[k];if(r&&r.refs)for(const e of r.refs)if(e.ref===id)e.ref=e.base==='start'?pS.id:pE.id}}
     for(const l of state.links){if(l.to===id)l.to=pS.id;if(l.from===id)l.from=(l.how&&l.how[0]==='s')?pS.id:pE.id}
     state.tasks.splice(subEnd(id),0,...ps);sel=ps[0].id});
 }
-function addPeriod(id){
-  const T=byId[id];if(!T||!perP(T))return;if(!owns(id))return deny();
-  if(kids[id].length>=PER_MAX){toast(`期間は${PER_MAX}つまでです`);return}
-  mutate(()=>{const ks=kids[id],last=ks[ks.length-1],x=newPeriod(T,'期間'+(ks.length+1),T.qty,last);state.tasks.splice(subEnd(id),0,x);sel=x.id});
-  toast('期間を追加しました（前の期間の完了の翌日から）');
+function addSub(id){
+  const T=byId[id];if(!T||!subP(T))return;if(!owns(id))return deny();
+  mutate(()=>{const ks=kids[id],last=ks[ks.length-1],sq=ks.reduce((a,k)=>a+(+k.qty||0),0),rest=+T.qty>0?Math.round((+T.qty-sq)*100)/100:'',x=newSub(T,'下位工程'+(ks.length+1),rest>0?rest:(+T.qty>0&&ks.every(k=>+k.qty===+T.qty)?T.qty:''),last);T.collapsed=false;state.tasks.splice(subEnd(id),0,x);sel=x.id});
+  toast('下位工程を追加しました（前の下位工程の完了の翌日から）');
 }
-/* 1本に戻す：1つ目の期間の日程・関連付け・実績を細別に戻し、期間を消す（期間を指していた関連付けは細別に付け替える） */
-function mergePeriods(T){
+/* 下位工程をやめる：1つ目の下位工程の日程・関連付け・実績を細別に戻し、下位工程を消す（下位工程を指していた関連付けは細別に付け替える） */
+function mergeSubs(T){
   const ks=kids[T.id]||[];if(!ks.length)return;const f=ks[0],ids=new Set(ks.map(x=>x.id));
   for(const k of['startRule','endRule','anchor','deadline'])T[k]=JSON.parse(JSON.stringify(f[k]??null));
-  for(const k of PER_KEYS)T[k]=JSON.parse(JSON.stringify(f[k]??''));
+  for(const k of SUB_KEYS)T[k]=JSON.parse(JSON.stringify(f[k]??''));
   if(f.pin)T.pin=f.pin;T.as=f.as;T.ae=f.ae;T.prog=f.prog;
   if((T.buk||[]).length&&f.bukUse)T.buk=T.buk.map((b,i)=>Object.assign({},b,{use:!!f.bukUse[i]}));
-  if(ks.length>1&&f.durSrc!=='fixed'&&f.durSrc!=='buk'&&f.durSrc!=='yield'){T.durSrc='fixed';T.dur=Math.max(1,(C[ks[ks.length-1].id]?.pe??0)-(C[f.id]?.ps??0)+1)}
   for(const t of state.tasks){if(ids.has(t.id))continue;for(const k of['startRule','endRule','deadline']){const r=t[k];if(r&&r.refs)for(const e of r.refs)if(ids.has(e.ref))e.ref=T.id}}
   for(const k of['startRule','endRule','deadline']){const r=T[k];if(r&&r.refs)r.refs=r.refs.filter(e=>!ids.has(e.ref)&&e.ref!==T.id)}
   for(const l of state.links){if(ids.has(l.from))l.from=T.id;if(ids.has(l.to))l.to=T.id}
   state.links=state.links.filter(l=>l.from!==l.to);
   state.tasks=state.tasks.filter(t=>!ids.has(t.id));T.collapsed=false;
 }
-/* 期間が1つだけ残ったら自動で1本に戻す。戻したら true */
-function fixPeriods(){let ch=false;for(const t of state.tasks.slice()){const k=kids[t.id];if(k&&k.length===1&&k[0].per){mergePeriods(t);ch=true}}return ch}
-function mergePeriodsUI(id){const T=byId[id];if(!T||!perP(T))return;if(!owns(id))return deny();
-  mutate(()=>{mergePeriods(T);sel=id});toast('1本に戻しました（1つ目の期間の日程を使っています）')}
-function openPeriods(id){
-  let t=byId[id];if(!t)return;if(t.per)t=byId[t.parent];
-  if(perP(t)){openDetail(t.id);return}
-  if(t.frame){toast('余裕期間・準備工・跡片付けは期間を分けられません');return}
-  if((kids[t.id]||[]).length){toast('期間を分けられるのは末端の工程（細別など、子の無い行）だけです');return}
+function mergeSubsUI(id){const T=byId[id];if(!T||!subP(T))return;if(!owns(id))return deny();
+  if((kids[id]||[]).some(x=>(kids[x.id]||[]).length))return toast('下位工程の下にさらに子があるため、元に戻せません');
+  mutate(()=>{mergeSubs(T);sel=id});toast('下位工程をやめて1本に戻しました（1つ目の下位工程の日程を使っています。Ctrl+Z で元に戻せます）')}
+function openSubs(id){
+  let t=byId[id];if(!t)return;if(t.bukUse&&t.parent&&subP(byId[t.parent]))t=byId[t.parent];
+  if(subP(t)){openDetail(t.id);return}
+  if(t.frame){toast('余裕期間・準備工・跡片付けには下位工程を作れません');return}
+  if((kids[t.id]||[]).length){toast('下位工程を作れるのは末端の工程（細別など、子の無い行）だけです。子を足すときは「＋子タスク」を使ってください');return}
   if(!owns(t.id))return deny();
   const q=t.qty,hasQ=q!==''&&+q>0,unit=esc(t.unit||'');
   let n=2,how=hasQ?'split':'same';
-  const defQ=(i)=>!hasQ?'':how==='same'?q:(()=>{const b=Math.floor(+q/n*100)/100;return i<n-1?b:Math.round((+q-b*(n-1))*100)/100})();
-  const names=['期間1','期間2','期間3'];
+  const defQ=(i)=>!hasQ?'':how==='same'?q:(()=>{const u=Number.isInteger(+q)?1:100,b=Math.floor(+q/n*u)/u;return i<n-1?b:Math.round((+q-b*(n-1))*100)/100})();
+  const names=Array.from({length:9},(_,i)=>'下位工程'+(i+1));
   const rowsH=()=>Array.from({length:n},(_,i)=>`<tr><td>${i+1}</td><td><input class="fld" data-pn="${i}" value="${esc(names[i])}" style="width:10em"></td><td><input class="fld" type="number" step="any" min="0" data-pq="${i}" value="${defQ(i)}" style="width:8em"> ${unit}</td><td data-pd="${i}" style="text-align:right;white-space:nowrap"></td></tr>`).join('');
-  openModal(`<h2>期間を分ける：${esc(t.name)}</h2>
-<p class="hint">1本の行の中で、工程を2〜3の期間（分かれたバー）に分けます。各期間は日数・日程・関連付けを別に持ちます。歩掛は細別に残し、日数に使う歩掛は期間ごとに選べます（敷鉄板の設置・撤去など）。</p>
-<div class="rr"><label>期間の数 <select class="fld" id="pp-n"><option value="2">2</option><option value="3">3</option></select></label>
-${hasQ?`<span style="width:16px"></span><label><input type="radio" name="pp-how" value="split" checked> 数量を分ける（合計＝${esc(q)}${unit}）</label><label><input type="radio" name="pp-how" value="same"> 各期間で同じ数量（設置と撤去など、別の作業）</label>`:''}</div>
-<table class="pt"><tbody><tr><td></td><td><small>期間の名前</small></td><td><small>数量</small></td><td><small>暦日数（目安）</small></td></tr></tbody><tbody id="pp-rows">${rowsH()}</tbody></table>
+  openModal(`<h2>下位工程を作る：${esc(t.name)}</h2>
+<p class="hint">この工程の下に、下位工程（設置・撤去など）を行として作ります。下位工程はそれぞれ日数・日程・関連付けを持ち、「${esc(t.name)}」の行は下位工程の合計（施工日数の合計と、全体の期間のバー）になります。歩掛は「${esc(t.name)}」に残し、日数に使う歩掛は下位工程ごとに選べます。</p>
+<div class="rr"><label>下位工程の数 <select class="fld" id="pp-n">${[2,3,4,5,6].map(v=>`<option value="${v}">${v}</option>`).join('')}</select></label>
+${hasQ?`<span style="width:16px"></span><label><input type="radio" name="pp-how" value="split" checked> 数量を分ける（合計＝${esc(q)}${unit}）</label><label><input type="radio" name="pp-how" value="same"> 各下位工程で同じ数量（設置と撤去など、別の作業）</label>`:''}</div>
+<table class="pt"><tbody><tr><td></td><td><small>下位工程の名前</small></td><td><small>数量</small></td><td><small>暦日数（目安）</small></td></tr></tbody><tbody id="pp-rows">${rowsH()}</tbody></table>
 <p class="hint" id="pp-sum"></p>
-<p class="hint">ほかの工程がこの工程を基準にしているときは、開始日の基準は1つ目の期間に、完了日の基準は「数量を分ける」なら最後の期間、「同じ数量」なら1つ目の期間に付け替えます。1つ目の期間は今の日程・関連付け・実績を引き継ぎます。2つ目以降は前の期間の完了の翌日から始まる関連付けを入れるので、間を空けるときは後で関連付けを変えてください。後から「期間を追加」「1本に戻す」もできます。</p>
-<div class="mf"><span class="sp"></span><button class="btn" id="pp-c">やめる</button><button class="btn pri" id="pp-ok">分ける</button></div>`);
+<p class="hint">1つ目の下位工程は今の日程・関連付け・実績を引き継ぎます。2つ目以降は前の下位工程の完了の翌日から始まる関連付けを入れるので、間を空けるときは後で関連付けを変えてください。ほかの工程がこの工程を基準にしているときは、開始日の基準は1つ目に、完了日の基準は「数量を分ける」なら最後、「同じ数量」なら1つ目の下位工程に付け替えます。</p>
+<div class="mf"><span class="sp"></span><button class="btn" id="pp-c">やめる</button><button class="btn pri" id="pp-ok">作る</button></div>`);
   const box=$('#mbox'),read=()=>Array.from({length:n},(_,i)=>({name:(box.querySelector(`[data-pn="${i}"]`).value.trim()||names[i]),qty:box.querySelector(`[data-pq="${i}"]`).value===''?'':+box.querySelector(`[data-pq="${i}"]`).value}));
-  const prev=()=>{const ds=read();ds.forEach((d,i)=>{const x=Object.assign({},t,{qty:d.qty,per:false},periodDurFor(t,d.qty));const D=calcDur(x);box.querySelector(`[data-pd="${i}"]`).textContent=D.dur+'日'});
-    const sm=ds.reduce((a,d)=>a+(+d.qty||0),0);$('#pp-sum').textContent=hasQ&&how==='split'?`数量の合計 ${Math.round(sm*100)/100}${t.unit||''}${Math.abs(sm-+q)>1e-6?`（細別の数量 ${q} と合っていません）`:''}`:''};
+  const prev=()=>{const ds=read();ds.forEach((d,i)=>{const x=Object.assign({},t,{qty:d.qty},subDurFor(t,d.qty));const D=calcDur(x);box.querySelector(`[data-pd="${i}"]`).textContent=D.dur+'日'});
+    const sm=ds.reduce((a,d)=>a+(+d.qty||0),0);$('#pp-sum').textContent=hasQ&&how==='split'?`数量の合計 ${Math.round(sm*100)/100}${t.unit||''}${Math.abs(sm-+q)>1e-6?`（「${t.name}」の数量 ${q} と合っていません）`:''}`:''};
   const redraw=()=>{$('#pp-rows').innerHTML=rowsH();prev()};
   box.onchange=e=>{if(e.target.id==='pp-n'){read().forEach((d,i)=>names[i]=d.name);n=+e.target.value;redraw()}else if(e.target.name==='pp-how'){read().forEach((d,i)=>names[i]=d.name);how=e.target.value;redraw()}};
   box.oninput=e=>{if(e.target.dataset.pq!=null||e.target.dataset.pn!=null)prev()};
   prev();
   $('#pp-c').onclick=closeModal;
-  $('#pp-ok').onclick=()=>{const ds=read();closeModal();doSplitPeriods(t.id,ds,hasQ?how:'same');toast(`${ds.length}つの期間に分けました`)};
+  $('#pp-ok').onclick=()=>{const ds=read();closeModal();doMakeSubs(t.id,ds,hasQ?how:'same');toast(`下位工程を${ds.length}つ作りました`)};
 }
 function togglePin(){const t=sel&&byId[sel];if(!t){toast('アンカーにする工程を選んでください');return}if((kids[t.id]||[]).length){toast('アンカーにできるのは末端の工程（子タスクの無い行）だけです');return}if(!owns(t.id))return deny();
   const on=!t.pin;mutate(()=>{if(on)t.pin=iso(C[t.id].ps);else delete t.pin});toast(on?`「${t.name}」をアンカーにしました。関連付けでつながる工程はこの工程に合わせて決まります`:`「${t.name}」のアンカーを外しました`)}
@@ -1848,7 +1842,7 @@ lin.addEventListener('contextmenu',e=>{if(e.shiftKey)return;const row=e.target.c
 lin.addEventListener('change',e=>{const el=e.target,k=el.dataset.k,id=el.closest('.row')?.dataset.id;if(k&&id)editCell(id,k,el.value)});
 lin.addEventListener('focusin',e=>{const id=e.target.closest('.row')?.dataset.id;if(id&&id!==sel)select(id)});
 lin.addEventListener('click',e=>{const row=e.target.closest('.row,.mhead');if(!row)return;const id=row.dataset.id;
-  if(e.target.closest('[data-tg]')){if(id.startsWith('grp:')){GCOL.has(id)?GCOL.delete(id):GCOL.add(id);renderAll(true);return}const t=byId[id];if(perP(t))return;t.collapsed=!t.collapsed;saveLocalView();renderAll(true);return}
+  if(e.target.closest('[data-tg]')){if(id.startsWith('grp:')){GCOL.has(id)?GCOL.delete(id):GCOL.add(id);renderAll(true);return}const t=byId[id];t.collapsed=!t.collapsed;saveLocalView();renderAll(true);return}
   if(id!==sel)select(id)});
 lin.addEventListener('dblclick',e=>{if(e.target.closest('.wbs,.grip,.ro')){const id=e.target.closest('.row,.mhead').dataset.id;openDetail(id)}});
 lin.addEventListener('pointerdown',e=>{const g=e.target.closest('.grip');if(!g||e.button!==0)return;const id=g.closest('.row,.mhead').dataset.id;e.preventDefault();
@@ -1880,7 +1874,7 @@ function openDetail(id){
   const t=byId[id];if(!t)return;const c=C[id],P=c.parent;sel=id;renderChart();
   const opts=refOptions(id);
   const work={s:[],e:[],d:[]},modes={s:'max',e:'max',d:'min'},dates={s:'',e:'',d:''};
-  const PB=t.per?byId[t.parent]:null,PP=perP(t);
+  const PB=t.bukUse&&t.parent&&(byId[t.parent].buk||[]).length?byId[t.parent]:null,PP=subP(t);
   const bk=JSON.parse(JSON.stringify(bukOf(t)));let MST=null;
   for(const[pre,r]of[['s',t.startRule],['e',t.endRule],['d',t.deadline]]){if(!r)continue;
     if(r.type==='rel'){work[pre]=(r.refs||[]).filter(e=>byId[e.ref]).map(e=>({...e}));modes[pre]=r.mode||(pre==='d'?'min':'max');dates[pre]=r.date||''}else dates[pre]=r.date||''}
@@ -1898,11 +1892,11 @@ function openDetail(id){
 <p class="hint">${hint}</p></fieldset>`};
   const lks=state.links.filter(l=>l.from===id||l.to===id);
   const S=state.settings;
-  const perUI=PP?`<h3>期間（分かれたバー）</h3><p class="hint">この工程は ${kids[id].length}つの期間に分けています：${kids[id].map((x,j)=>`${j+1}. ${esc(x.name)}（${md(C[x.id].ps)}〜${md(C[x.id].pe)}、${C[x.id].dur}日）`).join('　')}。期間ごとの日数・日程は、バーの右クリックか左の表の期間の行で設定します。</p><div class="rr"><button class="btn" id="d-peradd"${kids[id].length>=3?' disabled title="期間は3つまでです（工程計画作成支援システムの形式）"':''}>＋期間を追加</button><button class="btn" id="d-permerge">1本に戻す</button></div>`
-    :PB?`<div class="rr"><span class="hint">細別「${esc(PB.name)}」の期間 ${kids[PB.id].indexOf(t)+1}/${kids[PB.id].length}</span><button class="btn" id="d-peradd"${kids[PB.id].length>=3?' disabled':''}>＋期間を追加</button><button class="btn" id="d-permerge">1本に戻す</button></div>`
-    :!P&&!t.frame?`<div class="rr"><button class="btn" id="d-persplit" title="1本の行の中で、2〜3の期間（分かれたバー）に分けます">期間を分ける…</button></div>`:'';
-  openModal(`<h2>${esc(WBS[id])} ${PB?'期間の詳細':'タスクの詳細'}</h2>${perUI}
-<div class="g2"><label>${PB?'期間の名前（例：設置・撤去）':'名称（工種・種別・細別）'}<input id="d-name" value="${esc(t.name)}"></label><label>担当者<input id="d-who" list="dl-who" value="${esc(t.who)}"></label><label>工程区分（番号）<input id="d-proc" type="number" min="1" step="1" value="${procNum(t.proc)}"></label><label>備考<input id="d-note" value="${esc(t.note)}"></label></div>
+  const sumW=PP?leafIds(id).reduce((a,x)=>a+(C[x]&&C[x].work!=null?C[x].work:0),0):0,sumD=PP?leafIds(id).reduce((a,x)=>a+(C[x]?C[x].dur:0),0):0;
+  const perUI=PP?`<h3>下位工程</h3><p class="hint">この工程は下位工程 ${kids[id].length}つの合計です：${kids[id].map((x,j)=>`${j+1}. ${esc(x.name)}（${md(C[x.id].ps)}〜${md(C[x.id].pe)}、${C[x.id].dur}日）`).join('　')}。合計 施工日数 ${f2(sumW)}日、暦日数 ${sumD}日（全体の期間 ${c.dur}日）。下位工程の日数・日程は、それぞれの行で設定します。</p><div class="rr"><button class="btn" id="d-peradd">＋下位工程を追加</button><button class="btn" id="d-permerge" title="下位工程を消して、1つ目の下位工程の日程で1本の工程に戻します">下位工程をやめて1本に戻す</button></div>`
+    :!P&&!t.frame?`<div class="rr"><button class="btn" id="d-persplit" title="この工程の下に下位工程（設置・撤去など）を作り、この工程は合計にします">下位工程を作る…</button></div>`:'';
+  openModal(`<h2>${esc(WBS[id])} タスクの詳細</h2>${perUI}
+<div class="g2"><label>${PB?'名称（下位工程。例：設置・撤去）':'名称（工種・種別・細別）'}<input id="d-name" value="${esc(t.name)}"></label><label>担当者<input id="d-who" list="dl-who" value="${esc(t.who)}"></label><label>工程区分（番号）<input id="d-proc" type="number" min="1" step="1" value="${procNum(t.proc)}"></label><label>備考<input id="d-note" value="${esc(t.note)}"></label></div>
 <div class="g2" style="margin-top:8px"><label>規格<input id="d-spec" value="${esc(t.spec)}"></label><label>数量<input id="d-qty" type="number" step="any" min="0" value="${esc(t.qty)}"></label><label>単位<input id="d-unit" value="${esc(t.unit)}"></label></div>
 ${P?`<p class="hint">親タスクの日付・日数・進捗度は子タスクから自動で集計されます（予定 ${fmt(c.ps)} 〜 ${fmt(c.pe)}、${c.dur}日、${Math.round(c.prog)}%）。</p>`:`
 ${t.frame?`<p class="hint" style="color:#b45309">${esc(FRAME[t.frame])}は日数だけの工程です。日数は工事情報の「${esc(FRAME[t.frame])}（日）」で決まり、雨休率・作業不能期間は使いません（左の表の暦日数を書き換えても変わります）。開始日は${t.frame==='yoyu'?'工期（自）':t.frame==='prep'?'余裕期間の翌日':'ほかの工程がすべて終わった翌日'}です。</p>`:''}
@@ -1919,7 +1913,7 @@ ${t.frame?`<p class="hint" style="color:#b45309">${esc(FRAME[t.frame])}は日数
 <p class="hint" id="d-calc">${esc(durText(t,c))}</p>
 <div class="rr"><label><input type="checkbox" id="d-rst"${t.restricted!==false?' checked':''}> 作業不能期間（${esc(S.periods.map(p=>p.name).join('、')||'未設定')}）には施工しない</label></div>
 <p class="hint">暦日数＝切り上げ（（施工日数＋雨休日数）÷班数）、雨休日数＝切り上げ（施工日数×雨休率）。土日祝は雨休率に含まれるため、カレンダーでは数えません。準備工・後片付け工など雨休を見込まないものは雨休率を 0 にします。</p>
-${bk.length?`<h3>歩掛（${bk.length}件）${PB?`<small>　細別「${esc(PB.name)}」の歩掛。日数に使う歩掛は期間ごとに選べます（日当り施工量・数量比の変更は細別とほかの期間にも反映）</small>`:''}</h3><div id="d-buk">${bukRows(t,bk,null)}</div><p class="hint" id="d-mst"></p>`:''}
+${bk.length?`<h3>歩掛（${bk.length}件）${PB?`<small>　「${esc(PB.name)}」の歩掛。日数に使う歩掛は下位工程ごとに選べます（日当り施工量・数量比の変更は「${esc(PB.name)}」とほかの下位工程にも反映）</small>`:''}</h3><div id="d-buk">${bukRows(t,bk,null)}</div><p class="hint" id="d-mst"></p>`:''}
 ${ruleUI('s','開始日の決め方',c.ps,'日付と関連タスクの両方にチェックすると、「前工程が終わった翌日」と「決められた日付」のうち遅い方（最も遅い日）から開始します。「完了日から +1日」で翌日（作業不能期間の対象なら期間明けの日）です。')}
 ${ruleUI('e','完了日の決め方',c.pe,'完了日で拘束するときに使います。')}
 ${ruleUI('d','期限（任意）',c.dl??c.pe,'期限は日程を動かしません。バーは開始日から作業日数ぶん引き、期限を超えた部分を赤い斜線と破線で示します。日付と関連タスクの両方を使うときは、通常は厳しい方（最も早い日）にします。')}
@@ -1962,9 +1956,9 @@ ${lks.length?`<ul class="lst">${lks.map(l=>`<li><span>${l.kind==='plan'?'予定'
   g('cp').addEventListener('input',()=>g('cpdef').checked=false);g('ca').addEventListener('input',()=>g('cadef').checked=false);
   g('cancel').onclick=closeModal;
   g('del').onclick=()=>{closeModal();sel=id;delTask()};
-  if(g('persplit'))g('persplit').onclick=()=>{closeModal();openPeriods(id)};
-  if(g('peradd'))g('peradd').onclick=()=>{closeModal();addPeriod(PB?PB.id:id)};
-  if(g('permerge'))g('permerge').onclick=()=>{closeModal();mergePeriodsUI(PB?PB.id:id)};
+  if(g('persplit'))g('persplit').onclick=()=>{closeModal();openSubs(id)};
+  if(g('peradd'))g('peradd').onclick=()=>{closeModal();addSub(id)};
+  if(g('permerge'))g('permerge').onclick=()=>{closeModal();mergeSubsUI(id)};
   if(!isAdmin())g('who').readOnly=true;
   if(!owns(id)){for(const el of $('#mbox').querySelectorAll('input,select,textarea'))el.disabled=true;for(const el of $('#mbox').querySelectorAll('[data-add],[data-rm]'))el.disabled=true;g('ok').style.display='none';g('del').style.display='none';
     $('#mbox h2').insertAdjacentHTML('afterend',`<p class="hint">${t.who?`担当：${esc(t.who)}。`:''}${RO?'閲覧のみで開いているため、変更できません。':'担当外のタスクのため、閲覧のみです。'}</p>`)}
@@ -2268,7 +2262,7 @@ function openIO(){
 const on=(id,ev,fn)=>$(id).addEventListener(ev,fn);
 on('#b-add','click',()=>addTask(false));on('#b-child','click',()=>addTask(true));on('#b-del','click',delTask);
 on('#b-in','click',indent);on('#b-out','click',outdent);on('#b-up','click',()=>moveSib(-1));on('#b-down','click',()=>moveSib(1));
-on('#b-pin','click',togglePin);on('#b-per','click',()=>sel?openPeriods(sel):toast('期間を分ける工程を選んでください'));
+on('#b-pin','click',togglePin);on('#b-per','click',()=>sel?openSubs(sel):toast('下位工程を作る工程を選んでください'));
 on('#b-detail','click',()=>sel?openDetail(sel):toast('タスクを選んでください'));
 on('#b-undo','click',undo);on('#b-redo','click',redo);on('#b-save','click',saveProject);on('#b-users','click',openUsers);
 on('#b-proj','click',async()=>{if(await confirmLeave())screenProjects()});
