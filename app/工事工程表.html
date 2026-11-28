@@ -1194,6 +1194,14 @@ function stickMonths(){const L=rbody.scrollLeft;for(const t of hsvg.querySelecto
 function renderChart(){
   const S=state.settings,V=state.view,W=(R.to-R.from+1)*DW,H=Math.max(TOTH+80,rbody.clientHeight);
   const LN=i=>ROWS[i].lane,TP=i=>ROWS[i].top,BT=i=>ROWS[i].top+ROWS[i].h,CP=critPath();
+  /* 完了日に右から入るパスがあるバーは、完了日・名前の文字を矢印の分だけ右にずらす */
+  const END_IN=new Set();if(V.showPlanLinks)for(const L of state.links)if(L.kind==='plan'&&linkHow(L).how[1]==='e')END_IN.add(L.to);if(V.showCrit!==false)for(const E of CP.edges)if(E.toSide==='end')END_IN.add(E.to);
+  /* パスの線の通り道：先行のバーの端から縦に出て、後続の開始日へは左から（右向きの矢印）、完了日へは右から（左向きの矢印）入る。
+     線がバーの上を通らないよう、入る向きと逆側にあるときは行の境目で回り込む。真上・真下なら縦の線だけ */
+  const route=(x1,ya,x2,yb,ib,toEnd)=>{const dir=Math.sign(yb-ya),hh=6.5;if(dir===0)return`M${x1} ${ya}L${x2} ${yb}`;
+    const y0=ya+dir*hh,ym=dir>0?TP(ib)+2:BT(ib)-2;if(Math.abs(x2-x1)<4)return`M${x1} ${y0}L${x2} ${yb-dir*hh}`;
+    if(!toEnd)return x2-x1>=6?`M${x1} ${y0}V${yb}H${x2}`:`M${x1} ${y0}V${ym}H${x2-10}V${yb}H${x2}`;
+    return x1-x2>=6?`M${x1} ${y0}V${yb}H${x2}`:`M${x1} ${y0}V${ym}H${x2+10}V${yb}H${x2}`};
   let bg='',fg='',lk='',lb='';
   /* バーの表現：塗り（塗りつぶし／斜線 右上がり・右下がり）と端部（通常／両端を矢印）。色はそのまま */
   const HP=new Map();let CLN=0;
@@ -1253,7 +1261,7 @@ function renderChart(){
     if(t.id===sel&&(inRow||V.show!=='both')){fg+=`<rect x="${x1-2}" y="${top+1}" width="${w+4}" height="${HALF-1}" rx="4" class="selbar"/>`;if(c.as!=null)fg+=`<rect x="${X(c.as)-2}" y="${top+HALF}" width="${X(c.aeDraw+1)-X(c.as)+4}" height="${HALF-1}" rx="4" class="selbar"/>`}
     if(inRow){if(inRow==='lbl'&&V.lblName&&w>t.name.length*11+(si?30:8))lb+=`<text x="${x1+w/2+(si?9:0)}" y="${top+13}" class="lbin" text-anchor="middle">${esc(t.name)}</text>`}
     else{if(V.lblStart)lb+=`<text x="${x1-4}" y="${top+13}" class="lb" text-anchor="end">${md(c.ps)}</text>`;
-      let lx=x2+4;if(V.lblEnd){lb+=`<text x="${lx}" y="${top+13}" class="lb">${md(c.pe)}</text>`;lx+=md(c.pe).length*6.3+6}
+      let lx=x2+(END_IN.has(t.id)?14:4);if(V.lblEnd){lb+=`<text x="${lx}" y="${top+13}" class="lb">${md(c.pe)}</text>`;lx+=md(c.pe).length*6.3+6}
       if(V.lblName){lb+=`<text x="${lx}" y="${top+13}" class="lb nm">${esc(t.name)}</text>`;lx+=t.name.length*11.5+6}
       if(c.over)lb+=`<text x="${lx}" y="${top+13}" class="lb ovt">期限超過 ${c.over}日</text>`}
     pick(t,c,top);
@@ -1291,9 +1299,7 @@ function renderChart(){
     else{if(a.as==null||b.as==null)continue;ea=a.aeDraw;sb=b.as;ya=LN(ia)+HALF+8.5;yb=LN(ib)+HALF+8.5}
     const x1=X(ea+1),x2=X(sb),bad=how==='es'&&sb<=ea,hh=6.5,dir=Math.sign(yb-ya);let d;
     if(bad&&dir!==0){const ym=dir>0?TP(ib):BT(ib);d=`M${x1} ${ya}H${x1+8}V${ym}H${x2-10}V${yb}H${x2}`}
-    else if(dir===0)d=`M${x1} ${ya}L${x2} ${yb}`;
-    else if(x2-x1>=4)d=`M${x1} ${ya+dir*hh}V${yb}H${x2}`;
-    else d=`M${x1} ${ya+dir*hh}L${x2} ${yb-dir*hh}`;
+    else d=route(x1,ya,x2,yb,ib,how[1]==='e');
     const col=bad?'#d62828':L.kind==='plan'?S.colors.linkPlan:S.colors.linkAct;
     if(V.lblWait&&L.note){
       const ly=bad&&dir!==0?(dir>0?TP(ib):BT(ib)):yb,xm=(x1+x2)/2;
@@ -1304,7 +1310,7 @@ function renderChart(){
   if(V.showCrit!==false)for(const E of CP.edges){
     const ia=rowOf(E.from),ib=rowOf(E.to);if(ia==null||ib==null)continue;const a=C[E.from],b=C[E.to];if(!a||!b)continue;
     const xa=E.fromSide==='start'?X(a.ps):X(a.pe+1),xb=E.toSide==='start'?X(b.ps):X(b.pe+1),ya=LN(ia)+9.5,yb=LN(ib)+9.5,dv=Math.sign(yb-ya);
-    const d=dv===0?`M${xa} ${ya}L${xb} ${yb}`:`M${xa} ${ya+dv*6.5}V${yb}H${xb}`;
+    const d=route(xa,ya,xb,yb,ib,E.toSide==='end');
     const sn={start:'開始日',end:'完了日'};
     lk+=`<g class="lk"><title>${esc(`クリティカルパス：「${nm(E.from)}」の${sn[E.fromSide]} → 「${nm(E.to)}」の${sn[E.toSide]}（${E.offset>=0?'+':''}${E.offset}日）`)}</title><path d="${d}" class="crp" stroke="${S.colors.crit}" marker-end="url(#ar-crit)"/></g>`;
   }
