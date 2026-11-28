@@ -118,7 +118,7 @@ svg text{font-family:inherit}
 .todayh{fill:#d62828;opacity:.18}
 .hb{fill:var(--bg);opacity:.55;pointer-events:none}
 .pg{fill:#000;opacity:.28;pointer-events:none}
-.err rect.pb{stroke:var(--bad);stroke-width:2;stroke-dasharray:3 2}
+.err .pb{stroke:var(--bad);stroke-width:2;stroke-dasharray:3 2}
 .lb{font-size:11px;fill:var(--ink);paint-order:stroke;stroke:var(--bg);stroke-width:3px;pointer-events:none}
 .lb.nm{font-weight:700}
 .wn{font-size:11px;font-weight:700;paint-order:stroke;stroke:var(--bg);stroke-width:4px;pointer-events:none}
@@ -215,7 +215,7 @@ body:not(.admin) .adm{display:none!important}
 .mhead.sel{background:var(--sel)}
 .sbd{flex:none;min-width:17px;height:17px;border-radius:9px;color:#fff;font-size:10px;font-weight:700;display:inline-grid;place-items:center;padding:0 3px;margin-right:2px}
 .row.hov{outline:2px solid var(--hc,var(--acc));outline-offset:-2px;position:relative;z-index:1}
-g.hov rect.pb,g.hov>rect:first-of-type{stroke:var(--ink);stroke-width:2}
+g.hov .pb,g.hov>rect:first-of-type{stroke:var(--ink);stroke-width:2}
 .crb{fill:none;stroke-width:2.4;pointer-events:none}
 .crp{fill:none;stroke-width:2.6;pointer-events:stroke}
 .selbar{fill:none;stroke:var(--ink);stroke-width:1.6;stroke-dasharray:3 2;pointer-events:none}
@@ -819,6 +819,18 @@ function renderChart(){
   const S=state.settings,V=state.view,W=(R.to-R.from+1)*DW,H=Math.max(TOTH+80,rbody.clientHeight);
   const LN=i=>ROWS[i].lane,TP=i=>ROWS[i].top,BT=i=>ROWS[i].top+ROWS[i].h,CP=critPath();
   let bg='',fg='',lk='',lb='';
+  /* バーの表現：塗り（塗りつぶし／斜線 右上がり・右下がり）と端部（通常／右端を矢印／両端を矢印）。色はそのまま */
+  const HP=new Map();let CLN=0;
+  const hatch=(col,dir)=>{const k=dir+col;if(!HP.has(k))HP.set(k,`<pattern id="hp${HP.size}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(${dir==='up'?45:-45})"><rect width="1.6" height="5" fill="${col}"/></pattern>`);return`url(#hp${[...HP.keys()].indexOf(k)})`};
+  const shapeD=(s1,s2,y,h,aL,aR)=>{const a=Math.min(h*.8,(s2-s1)/(aL&&aR?2:1)*.6),m=y+h/2;return`M${aL?s1+a:s1} ${y}H${aR?s2-a:s2}${aR?`L${s2} ${m}L${s2-a} ${y+h}`:`V${y+h}`}H${aL?s1+a:s1}${aL?`L${s1} ${m}Z`:'Z'}`};
+  /* 1区間ぶんのバー（塗り・形・進捗）。aL/aR は矢印にする端 */
+  const barSeg=(t,s1,s2,y,h,cp,aL,aR,pf)=>{const fl=t.barFill==='up'||t.barFill==='down'?t.barFill:'';
+    if(!fl&&!aL&&!aR)return`<rect class="pb" x="${s1}" y="${y}" width="${s2-s1}" height="${h}" rx="3" fill="${cp}"/>${pf>0?`<rect x="${s1}" y="${y}" width="${pf}" height="${h}" rx="3" class="pg"/>`:''}`;
+    const d=aL||aR?shapeD(s1,s2,y,h,aL,aR):null,id='cl'+(CLN++);
+    const shape=d?`<path d="${d}"`:`<rect x="${s1}" y="${y}" width="${s2-s1}" height="${h}" rx="3"`;
+    let o=fl?`${shape} style="fill:var(--bg)" stroke="none"/>${shape} class="pb" fill="${hatch(cp,fl)}" stroke="${cp}" stroke-width="1.3"/>`:`${shape} class="pb" fill="${cp}"/>`;
+    if(pf>0)o+=`<clipPath id="${id}">${shape}/></clipPath><rect x="${s1}" y="${y}" width="${pf}" height="${h}" class="pg" clip-path="url(#${id})"/>`;
+    return o};
   if(V.shadeWeek)for(let d=R.from;d<=R.to;d++)if(dispOff(d)&&!off(d))bg+=`<rect x="${X(d)}" y="0" width="${DW}" height="${H}" class="hol"/>`;
   for(let d=R.from;d<=R.to;){const i=offIdx(d);if(i>=0){let e=d;while(e+1<=R.to&&offIdx(e+1)===i)e++;bg+=`<rect x="${X(d)}" y="0" width="${(e-d+1)*DW}" height="${H}" class="rst" fill="${offColor(S.periods[i],i)}"><title>${esc(off(d))}（作業不能期間）${esc(fmt(d))}〜${esc(fmt(e))}</title></rect>`;d=e+1}else d++}
   for(let d=R.from;d<=R.to;d++){const w=dow(d);if(w===1)bg+=`<line x1="${X(d)}" x2="${X(d)}" y1="0" y2="${H}" class="gl2"/>`;else if(DW>=14)bg+=`<line x1="${X(d)}" x2="${X(d)}" y1="0" y2="${H}" class="gl"/>`}
@@ -839,13 +851,12 @@ function renderChart(){
   /* 子のタスクバー（畳んだ親の行にも同じ形で描く） */
   const leafBar=(t,top,inRow)=>{
     const c=C[t.id],cp=t.cPlan||S.colors.plan,ca=t.cAct||S.colors.act,tip=tipOf(t,c),x1=X(c.ps),x2=X(c.pe+1),w=x2-x1;
-    const sg=c.segs&&c.segs.length>1?c.segs:null;let body;
-    if(sg){/* 作業不能期間をまたぐ：作業できる区間だけにバーを描き、区間の間は細い破線でつなぐ（1本の工程のまま） */
-      const tw=sg.reduce((a,[p1,p2])=>a+X(p2+1)-X(p1),0);let left=tw*c.prog/100;body=`<rect x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" fill="transparent"/>`;
-      sg.forEach(([p1,p2],k)=>{const s1=X(p1),s2=X(p2+1);body+=`<rect class="pb" x="${s1}" y="${top+3}" width="${s2-s1}" height="${HALF-5}" rx="3" fill="${cp}"/>`;
-        if(left>0){const f=Math.min(s2-s1,left);body+=`<rect x="${s1}" y="${top+3}" width="${f}" height="${HALF-5}" rx="3" class="pg"/>`;left-=f}
-        if(k<sg.length-1){const n1=X(sg[k+1][0]);body+=`<line x1="${s2}" x2="${n1}" y1="${top+HALF/2+1}" y2="${top+HALF/2+1}" class="offln" stroke="${cp}"/>`}})}
-    else body=`<rect class="pb" x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" fill="${cp}"/>${c.prog>0?`<rect x="${x1}" y="${top+3}" width="${w*c.prog/100}" height="${HALF-5}" rx="3" class="pg"/>`:''}`;
+    /* 作業不能期間をまたぐときは作業できる区間だけにバーを描き、区間の間は細い破線でつなぐ（1本の工程のまま） */
+    const sg=c.segs&&c.segs.length>1?c.segs:[[c.ps,c.pe]],ae=t.barEnd==='arrow'||t.barEnd==='both'?t.barEnd:'';
+    const tw=sg.reduce((a,[p1,p2])=>a+X(p2+1)-X(p1),0);let left=tw*c.prog/100,body=sg.length>1?`<rect x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" fill="transparent"/>`:'';
+    sg.forEach(([p1,p2],k)=>{const s1=X(p1),s2=X(p2+1),f=Math.max(0,Math.min(s2-s1,left));left-=f;
+      body+=barSeg(t,s1,s2,top+3,HALF-5,cp,ae==='both'&&k===0,!!ae&&k===sg.length-1,f);
+      if(k<sg.length-1){const n1=X(sg[k+1][0]);body+=`<line x1="${s2}" x2="${n1}" y1="${top+HALF/2+1}" y2="${top+HALF/2+1}" class="offln" stroke="${cp}"/>`}});
     fg+=`<g data-part="plan" data-lid="${t.id}"${inRow?' data-sub="1"':''} class="${c.err?'err':''}"><title>${tip}</title>${body}${c.over?(()=>{const o1=X(Math.max(c.ps,c.dl+1));return `<rect x="${o1}" y="${top+3}" width="${x2-o1}" height="${HALF-5}" fill="url(#ovh)"/><rect x="${o1+.75}" y="${top+3.75}" width="${Math.max(0,x2-o1-1.5)}" height="${HALF-6.5}" class="ovl"/>`})():''}${inRow?`<rect x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" class="sepl"/>`:''}</g>`;
     if(c.dl!=null){const xd=X(c.dl+1);fg+=`<g class="dlm"><title>${esc(ruleText(t,'deadline')+(c.over?`\n${c.over}日超過`:'\n期限内'))}</title><line x1="${xd}" x2="${xd}" y1="${top}" y2="${top+HALF}"/><path d="M${xd} ${top}h-6l3 4z"/></g>`}
     if(c.as!=null){const a1=X(c.as),a2=X(c.aeDraw+1),open=c.ae==null;
@@ -936,7 +947,7 @@ function renderChart(){
   if(info.length&&!drag){ri.innerHTML=`<b>関連付け（${info.length}件）</b><ul>${info.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><small>破線：パスを引いていない関連付け</small>`;ri.style.display='block'}else ri.style.display='none';
   const mk=(id,c)=>`<marker id="ar-${id}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="${c}"/></marker>`;
   csvg.setAttribute('width',W+40);csvg.setAttribute('height',H);
-  csvg.innerHTML=`<defs>${mk('plan',S.colors.linkPlan)}${mk('actual',S.colors.linkAct)}${mk('bad','#d62828')}${mk('rel','#8a929c')}${mk('crit',S.colors.crit)}<pattern id="ovh" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fde4e4"/><rect width="2.5" height="6" fill="#d62828"/></pattern></defs><g>${bg}</g><g>${fg}</g><g>${lk}</g><g>${lb}</g>`;
+  csvg.innerHTML=`<defs>${mk('plan',S.colors.linkPlan)}${mk('actual',S.colors.linkAct)}${mk('bad','#d62828')}${mk('rel','#8a929c')}${mk('crit',S.colors.crit)}<pattern id="ovh" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fde4e4"/><rect width="2.5" height="6" fill="#d62828"/></pattern>${[...HP.values()].join('')}</defs><g>${bg}</g><g>${fg}</g><g>${lk}</g><g>${lb}</g>`;
 }
 function renderAll(keepRange){
   const ae=document.activeElement;let fk=null;
@@ -1567,6 +1578,10 @@ ${ruleUI('d','期限（任意）',c.dl??c.pe,'期限は日程を動かしませ�
 <h3>バーの色</h3>
 <div class="rr"><label>予定 <input type="color" id="d-cp" value="${t.cPlan||(P?S.colors.parent:S.colors.plan)}"></label><label><input type="checkbox" id="d-cpdef"${t.cPlan?'':' checked'}> 既定色</label>
 <span style="width:20px"></span><label>実施 <input type="color" id="d-ca" value="${t.cAct||S.colors.act}"></label><label><input type="checkbox" id="d-cadef"${t.cAct?'':' checked'}> 既定色</label></div>
+${P?'':`<h3>バーの表現（予定のバー）</h3>
+<div class="rr"><span class="hint" style="width:3em">塗り</span>${[['','塗りつぶし'],['up','斜線（右上がり）'],['down','斜線（右下がり）']].map(([v,l])=>`<label><input type="radio" name="bfill" value="${v}"${(t.barFill||'')===v?' checked':''}> ${l}</label>`).join('')}</div>
+<div class="rr"><span class="hint" style="width:3em">端部</span>${[['','通常'],['arrow','右端を矢印'],['both','両端を矢印']].map(([v,l])=>`<label><input type="radio" name="bend" value="${v}"${(t.barEnd||'')===v?' checked':''}> ${l}</label>`).join('')}</div>
+<p class="hint">色は上の「バーの色」のまま、塗りと端部の形だけを変えます。</p>`}
 <h3>パス</h3>
 ${lks.length?`<ul class="lst">${lks.map(l=>`<li><span>${l.kind==='plan'?'予定':'実施'}：${esc(WBS[l.from]+' '+byId[l.from].name)} → ${esc(WBS[l.to]+' '+byId[l.to].name)}${l.note?`<br><small>コメント：${esc(l.note)}</small>`:''}</span><button class="btn" data-el="${l.id}">コメント・削除</button></li>`).join('')}</ul>`:'<p class="hint">このタスクにつながるパスはありません。ツールバーの「パス設定モード」で引けます。</p>'}
 <p class="msg" id="d-msg"></p>
@@ -1610,7 +1625,7 @@ ${lks.length?`<ul class="lst">${lks.map(l=>`<li><span>${l.kind==='plan'?'予定'
   for(const b of document.querySelectorAll('[data-el]'))b.onclick=()=>openLink(b.dataset.el,id);
   for(const b of document.querySelectorAll('[data-dl]'))b.onclick=()=>{const lid=b.dataset.dl;mutate(()=>{state.links=state.links.filter(l=>l.id!==lid)});openDetail(id)};
   g('ok').onclick=()=>{
-    const rd=n=>document.querySelector(`input[name="${n}"]:checked`)?.value;let sR,eR,dR,anc;
+    const rd=n=>document.querySelector(`input[name="${n}"]:checked`)?.value;let sR,eR,dR,anc,pin=false,pinD='';
     if(!P){anc=rd('anc');
       const mk=pre=>{const ud=g(pre+'-ud').checked,ur=g(pre+'-ur').checked,seen=new Set();
         const refs=ur?work[pre].filter(e=>byId[e.ref]&&!seen.has(e.ref)&&seen.add(e.ref)).map(e=>({ref:e.ref,base:e.base,offset:+e.offset||0})):[];
@@ -1618,7 +1633,7 @@ ${lks.length?`<ul class="lst">${lks.map(l=>`<li><span>${l.kind==='plan'?'予定'
         if(!refs.length&&!date)return null;
         if(!refs.length)return pre==='d'?{type:'rel',mode:'min',refs:[],date}:{type:'fixed',date};
         return Object.assign({type:'rel',mode:g(pre+'-mode').value,refs},date?{date}:{})};
-      const pin=!!(g('pin')&&g('pin').checked),pinD=g('pin-d')&&g('pin-d').value;
+      pin=!!(g('pin')&&g('pin').checked);pinD=g('pin-d')&&g('pin-d').value;
       sR=mk('s');eR=mk('e');dR=mk('d');
       const need=anc==='start'?[['s',sR]]:anc==='end'?[['e',eR]]:[['s',sR],['e',eR]];
       for(const[k,r]of pin?[]:need){if(!r){g('msg').textContent=`${k==='s'?'開始日':'完了日'}の決め方（日付または関連タスク）を指定してください`;return}
@@ -1627,7 +1642,8 @@ ${lks.length?`<ul class="lst">${lks.map(l=>`<li><span>${l.kind==='plan'?'予定'
       if(!eR)eR=t.endRule&&t.endRule.type&&(t.endRule.date||t.endRule.refs)?t.endRule:{type:'fixed',date:iso(c.pe)};}
     mutate(()=>{t.name=g('name').value;t.spec=g('spec').value;t.qty=g('qty').value===''?'':+g('qty').value;t.unit=g('unit').value;if(isAdmin())t.who=g('who').value;setProc(t,g('proc').value);t.note=g('note').value;
       if(!P){t.anchor=anc;t.startRule=sR;if(pin)t.pin=pinD||iso(c.ps);else delete t.pin;t.endRule=eR;t.deadline=dR;t.durSrc=dsrc();if(PB){t.bukUse=bk.map(b=>!!b.use);t.buk=[];PB.buk=bk.map((b,i)=>Object.assign({},b,{use:!!((PB.buk||[])[i]||{}).use}))}else t.buk=bk;t.daily=g('daily').value===''?'':+g('daily').value;if(+g('work').value>0)t.work=Math.round(+g('work').value*100)/100;t.parties=Math.max(1,Math.round(+g('pt').value||1));t.rainRate=g('rate').value===''?'':+g('rate').value;if(anc!=='both'&&t.durSrc==='fixed')t.dur=Math.max(1,Math.round(+g('dur').value||1));t.restricted=g('rst').checked;t.as=g('as').value;t.ae=t.as?g('ae').value:'';t.prog=clamp(Math.round(+g('prog').value||0),0,100)}
-      t.cPlan=g('cpdef').checked?'':g('cp').value;t.cAct=g('cadef').checked?'':g('ca').value});
+      t.cPlan=g('cpdef').checked?'':g('cp').value;t.cAct=g('cadef').checked?'':g('ca').value;
+      if(!P){const bf=document.querySelector('input[name=bfill]:checked')?.value||'',be=document.querySelector('input[name=bend]:checked')?.value||'';if(bf)t.barFill=bf;else delete t.barFill;if(be)t.barEnd=be;else delete t.barEnd}});
     closeModal();
   };
 }
