@@ -434,7 +434,7 @@ function fill(o){
   return{title:o.title??'',sample:!!o.sample,savedAt:o.savedAt||0,
     settings:Object.assign({},d.settings,o.settings||{},{colors:Object.assign({},d.settings.colors,(o.settings||{}).colors||{}),koji:Object.assign({},KOJI0,(o.settings||{}).koji||{}),periods:(o.settings&&o.settings.periods)||[]}),
     view:Object.assign({},d.view,o.view||{}),
-    tasks:fixProc((o.tasks||[]).map(t=>{const x=Object.assign(T(t.id||uid(),'',null),t);if(t.durSrc==null)x.durSrc='fixed';if(x.per)delete x.per;x.proc=t.proc??'';if(x.frame&&FRAME_OLD[x.frame]===x.name)x.name=FRAME[x.frame];x.startRule=migrateRule(x.startRule);x.endRule=migrateRule(x.endRule);return x})),links:o.links||[]};
+    tasks:fixProc((o.tasks||[]).map(t=>{const x=Object.assign(T(t.id||uid(),'',null),t);if(t.durSrc==null)x.durSrc='fixed';if(x.per)delete x.per;if(x.barEnd&&x.barEnd!=='both')delete x.barEnd;x.proc=t.proc??'';if(x.frame&&FRAME_OLD[x.frame]===x.name)x.name=FRAME[x.frame];x.startRule=migrateRule(x.startRule);x.endRule=migrateRule(x.endRule);return x})),links:o.links||[]};
 }
 /* 工程区分を番号にそろえる。以前は親の区分を子が引き継いでいたので、空の子は親の番号にする */
 function fixProc(ts){const by={};for(const t of ts)by[t.id]=t;const memo={},get=(t,g=0)=>{if(memo[t.id]!=null)return memo[t.id];const v=t.proc;let n;if(typeof v==='number'||String(v??'').trim())n=procNum(v);else n=t.parent&&by[t.parent]&&g<99?get(by[t.parent],g+1):1;return memo[t.id]=n};for(const t of ts)t.proc=get(t);for(const t of ts)t.proc=memo[t.id];return ts}
@@ -819,7 +819,7 @@ function renderChart(){
   const S=state.settings,V=state.view,W=(R.to-R.from+1)*DW,H=Math.max(TOTH+80,rbody.clientHeight);
   const LN=i=>ROWS[i].lane,TP=i=>ROWS[i].top,BT=i=>ROWS[i].top+ROWS[i].h,CP=critPath();
   let bg='',fg='',lk='',lb='';
-  /* バーの表現：塗り（塗りつぶし／斜線 右上がり・右下がり）と端部（通常／右端を矢印／両端を矢印）。色はそのまま */
+  /* バーの表現：塗り（塗りつぶし／斜線 右上がり・右下がり）と端部（通常／両端を矢印）。色はそのまま */
   const HP=new Map();let CLN=0;
   const hatch=(col,dir)=>{const k=dir+col;if(!HP.has(k))HP.set(k,`<pattern id="hp${HP.size}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(${dir==='up'?45:-45})"><rect width="1.6" height="5" fill="${col}"/></pattern>`);return`url(#hp${[...HP.keys()].indexOf(k)})`};
   const shapeD=(s1,s2,y,h,aL,aR)=>{const a=Math.min(h*.8,(s2-s1)/(aL&&aR?2:1)*.6),m=y+h/2;return`M${aL?s1+a:s1} ${y}H${aR?s2-a:s2}${aR?`L${s2} ${m}L${s2-a} ${y+h}`:`V${y+h}`}H${aL?s1+a:s1}${aL?`L${s1} ${m}Z`:'Z'}`};
@@ -852,7 +852,7 @@ function renderChart(){
   const leafBar=(t,top,inRow)=>{
     const c=C[t.id],cp=t.cPlan||S.colors.plan,ca=t.cAct||S.colors.act,tip=tipOf(t,c),x1=X(c.ps),x2=X(c.pe+1),w=x2-x1;
     /* 作業不能期間をまたぐときは作業できる区間だけにバーを描き、区間の間は細い破線でつなぐ（1本の工程のまま） */
-    const sg=c.segs&&c.segs.length>1?c.segs:[[c.ps,c.pe]],ae=t.barEnd==='arrow'||t.barEnd==='both'?t.barEnd:'';
+    const sg=c.segs&&c.segs.length>1?c.segs:[[c.ps,c.pe]],ae=t.barEnd==='both'?'both':'';
     const tw=sg.reduce((a,[p1,p2])=>a+X(p2+1)-X(p1),0);let left=tw*c.prog/100,body=sg.length>1?`<rect x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" fill="transparent"/>`:'';
     sg.forEach(([p1,p2],k)=>{const s1=X(p1),s2=X(p2+1),f=Math.max(0,Math.min(s2-s1,left));left-=f;
       body+=barSeg(t,s1,s2,top+3,HALF-5,cp,ae==='both'&&k===0,!!ae&&k===sg.length-1,f);
@@ -1580,7 +1580,7 @@ ${ruleUI('d','期限（任意）',c.dl??c.pe,'期限は日程を動かしませ�
 <span style="width:20px"></span><label>実施 <input type="color" id="d-ca" value="${t.cAct||S.colors.act}"></label><label><input type="checkbox" id="d-cadef"${t.cAct?'':' checked'}> 既定色</label></div>
 ${P?'':`<h3>バーの表現（予定のバー）</h3>
 <div class="rr"><span class="hint" style="width:3em">塗り</span>${[['','塗りつぶし'],['up','斜線（右上がり）'],['down','斜線（右下がり）']].map(([v,l])=>`<label><input type="radio" name="bfill" value="${v}"${(t.barFill||'')===v?' checked':''}> ${l}</label>`).join('')}</div>
-<div class="rr"><span class="hint" style="width:3em">端部</span>${[['','通常'],['arrow','右端を矢印'],['both','両端を矢印']].map(([v,l])=>`<label><input type="radio" name="bend" value="${v}"${(t.barEnd||'')===v?' checked':''}> ${l}</label>`).join('')}</div>
+<div class="rr"><span class="hint" style="width:3em">端部</span>${[['','通常'],['both','両端を矢印']].map(([v,l])=>`<label><input type="radio" name="bend" value="${v}"${(t.barEnd||'')===v?' checked':''}> ${l}</label>`).join('')}</div>
 <p class="hint">色は上の「バーの色」のまま、塗りと端部の形だけを変えます。</p>`}
 <h3>パス</h3>
 ${lks.length?`<ul class="lst">${lks.map(l=>`<li><span>${l.kind==='plan'?'予定':'実施'}：${esc(WBS[l.from]+' '+byId[l.from].name)} → ${esc(WBS[l.to]+' '+byId[l.to].name)}${l.note?`<br><small>コメント：${esc(l.note)}</small>`:''}</span><button class="btn" data-el="${l.id}">コメント・削除</button></li>`).join('')}</ul>`:'<p class="hint">このタスクにつながるパスはありません。ツールバーの「パス設定モード」で引けます。</p>'}
