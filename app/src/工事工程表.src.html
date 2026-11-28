@@ -410,7 +410,7 @@ function sample(){
   return{title:'○○川 河道掘削工事',sample:true,savedAt:0,
     settings:{sat:true,sun:true,nat:true,periods:[{name:'河川の出水期',from:'2026-06-01',to:'2026-10-31',yearly:true,y0:2026,y1:9999}],
       koji:Object.assign({},KOJI0,{place:'○○県○○市地先',from:'2027-01-12',to:'2027-12-24',rainRate:0.9,jigyo:'河川改修',kubun:'築堤･護岸',kyokuCode:'86',kyokuName:'近畿地方整備局',taishoName:'河川工事',A:11.02,b:0.173,yoyu:30,prep:40,clean:20}),
-      colors:{plan:'#2563c9',act:'#ef7d1a',parent:'#3a4452',linkPlan:'#2563c9',linkAct:'#c2410c',crit:'#e11d48'}},
+      colors:{plan:'#00ffff',act:'#ef7d1a',parent:'#3a4452',linkPlan:'#ff0000',linkAct:'#ff0000',crit:'#e11d48'}},
     view:{show:'both',showCrit:true,sort:'input',showPlanLinks:true,showActLinks:true,lblName:true,lblStart:true,lblEnd:true,lblAct:true,lblWait:true,showParBar:true,showSubs:true,dw:14,leftW:640,kind:'plan',shadeWeek:false},
     tasks:[
       frameTask('yoyu','fyoyu'),
@@ -436,11 +436,13 @@ function sample(){
 function fill(o){
   const d=sample();
   return{title:o.title??'',sample:!!o.sample,savedAt:o.savedAt||0,
-    settings:Object.assign({},d.settings,o.settings||{},{colors:Object.assign({},d.settings.colors,(o.settings||{}).colors||{}),koji:Object.assign({},KOJI0,(o.settings||{}).koji||{}),periods:(o.settings&&o.settings.periods)||[]}),
+    settings:Object.assign({},d.settings,o.settings||{},{colors:migColors(Object.assign({},d.settings.colors,(o.settings||{}).colors||{})),koji:Object.assign({},KOJI0,(o.settings||{}).koji||{}),periods:(o.settings&&o.settings.periods)||[]}),
     view:Object.assign({},d.view,o.view||{}),
     tasks:fixProc((o.tasks||[]).map(t=>{const x=Object.assign(T(t.id||uid(),'',null),t);if(t.durSrc==null)x.durSrc='fixed';if(x.per)delete x.per;if(x.barEnd&&x.barEnd!=='both')delete x.barEnd;x.proc=t.proc??'';if(x.frame&&FRAME_OLD[x.frame]===x.name)x.name=FRAME[x.frame];x.startRule=migrateRule(x.startRule);x.endRule=migrateRule(x.endRule);return x})),links:o.links||[]};
 }
 /* 工程区分を番号にそろえる。以前は親の区分を子が引き継いでいたので、空の子は親の番号にする */
+/* 以前の既定の色（予定バー #2563c9、予定パス #2563c9、実施パス #c2410c）は新しい既定（水色・赤・赤）に置き換える */
+function migColors(c){if(c.plan==='#2563c9')c.plan='#00ffff';if(c.linkPlan==='#2563c9')c.linkPlan='#ff0000';if(c.linkAct==='#c2410c')c.linkAct='#ff0000';return c}
 function fixProc(ts){const by={};for(const t of ts)by[t.id]=t;const memo={},get=(t,g=0)=>{if(memo[t.id]!=null)return memo[t.id];const v=t.proc;let n;if(typeof v==='number'||String(v??'').trim())n=procNum(v);else n=t.parent&&by[t.parent]&&g<99?get(by[t.parent],g+1):1;return memo[t.id]=n};for(const t of ts)t.proc=get(t);for(const t of ts)t.proc=memo[t.id];return ts}
 const dataObj=()=>({title:state.title,sample:state.sample,savedAt:state.savedAt,settings:state.settings,view:state.view,tasks:state.tasks,links:state.links});
 
@@ -826,16 +828,21 @@ function renderChart(){
   /* バーの表現：塗り（塗りつぶし／斜線 右上がり・右下がり）と端部（通常／両端を矢印）。色はそのまま */
   const HP=new Map();let CLN=0;
   /* 白・パステルなど明るい色のバーは背景と見分けにくいので細い灰色の枠を付ける */
+  /* バーの枠線：どの色でも、塗りの色を暗くした色で囲む（黒は灰色） */
+  const edgeC=c=>{const m=/^#?([0-9a-f]{6})$/i.exec(c||'');if(!m)return'#555';const n=parseInt(m[1],16),k=.55,h=v=>Math.round(v*k).toString(16).padStart(2,'0'),r=n>>16,g=n>>8&255,b=n&255;return r+g+b<60?'#6b7280':'#'+h(r)+h(g)+h(b)};
   const lightC=c=>{const m=/^#?([0-9a-f]{6})$/i.exec(c||'');if(!m)return false;const n=parseInt(m[1],16),r=n>>16,g=n>>8&255,b=n&255;return(.299*r+.587*g+.114*b)>200};
   const hatch=(col,dir)=>{const k=dir+col;if(!HP.has(k))HP.set(k,`<pattern id="hp${HP.size}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(${dir==='up'?45:-45})"><rect width="1.6" height="5" fill="${col}"/></pattern>`);return`url(#hp${[...HP.keys()].indexOf(k)})`};
-  const shapeD=(s1,s2,y,h,aL,aR)=>{const a=Math.min(h*.8,(s2-s1)/(aL&&aR?2:1)*.6),m=y+h/2;return`M${aL?s1+a:s1} ${y}H${aR?s2-a:s2}${aR?`L${s2} ${m}L${s2-a} ${y+h}`:`V${y+h}`}H${aL?s1+a:s1}${aL?`L${s1} ${m}Z`:'Z'}`};
+  /* 矢印の形（➩）：軸は細く、矢じりはバーの高さより少し大きく。aL/aR が矢じりを付ける端 */
+  const shapeD=(s1,s2,y,h,aL,aR)=>{const m=y+h/2,a=Math.min(h*1.05,(s2-s1)/((aL?1:0)+(aR?1:0)+1)),t1=y+h*.22,t2=y+h*.78,h1=y-1.5,h2=y+h+1.5,L=aL?s1+a:s1,R=aR?s2-a:s2;
+    return`M${L} ${t1}H${R}${aR?`V${h1}L${s2} ${m}L${R} ${h2}V${t2}`:`V${t2}`}H${L}${aL?`V${h2}L${s1} ${m}L${L} ${h1}Z`:'Z'}`};
   /* 1区間ぶんのバー（塗り・形・進捗）。aL/aR は矢印にする端 */
   const barSeg=(t,s1,s2,y,h,cp,aL,aR,pf)=>{const fl=t.barFill==='up'||t.barFill==='down'?t.barFill:'';
-    const lo=lightC(cp)?' stroke="#8a929c" stroke-width="1"':'';
-    if(!fl&&!aL&&!aR)return`<rect class="pb" x="${s1}" y="${y}" width="${s2-s1}" height="${h}" rx="3" fill="${cp}"${lo}/>${pf>0?`<rect x="${s1}" y="${y}" width="${pf}" height="${h}" rx="3" class="pg"/>`:''}`;
+    const lo=` stroke="${edgeC(cp)}" stroke-width="1"`;
+    if(t.barEnd==='both'&&!aL&&!aR){/* 矢印のバーで矢じりの無い区間（作業不能期間をまたぐ中ほど）は軸の太さにそろえる */const y2=y+h*.22,h2=h*.56;y=y2;h=h2}
+    if(!fl&&!aL&&!aR&&t.barEnd!=='both')return`<rect class="pb" x="${s1}" y="${y}" width="${s2-s1}" height="${h}" rx="3" fill="${cp}"${lo}/>${pf>0?`<rect x="${s1}" y="${y}" width="${pf}" height="${h}" rx="3" class="pg"/>`:''}`;
     const d=aL||aR?shapeD(s1,s2,y,h,aL,aR):null,id='cl'+(CLN++);
     const shape=d?`<path d="${d}"`:`<rect x="${s1}" y="${y}" width="${s2-s1}" height="${h}" rx="3"`;
-    let o=fl?`${shape} style="fill:var(--bg)" stroke="none"/>${shape} class="pb" fill="${hatch(cp,fl)}" stroke="${lightC(cp)?'#8a929c':cp}" stroke-width="1.3"/>`:`${shape} class="pb" fill="${cp}"${lo}/>`;
+    let o=fl?`${shape} style="fill:var(--bg)" stroke="none"/>${shape} class="pb" fill="${hatch(cp,fl)}" stroke="${edgeC(cp)}" stroke-width="1.2"/>`:`${shape} class="pb" fill="${cp}"${lo}/>`;
     if(pf>0)o+=`<clipPath id="${id}">${shape}/></clipPath><rect x="${s1}" y="${y}" width="${pf}" height="${h}" class="pg" clip-path="url(#${id})"/>`;
     return o};
   if(V.shadeWeek)for(let d=R.from;d<=R.to;d++)if(dispOff(d)&&!off(d))bg+=`<rect x="${X(d)}" y="0" width="${DW}" height="${H}" class="hol"/>`;
@@ -867,7 +874,7 @@ function renderChart(){
     fg+=`<g data-part="plan" data-lid="${t.id}"${inRow?' data-sub="1"':''} class="${c.err?'err':''}"><title>${tip}</title>${body}${c.over?(()=>{const o1=X(Math.max(c.ps,c.dl+1));return `<rect x="${o1}" y="${top+3}" width="${x2-o1}" height="${HALF-5}" fill="url(#ovh)"/><rect x="${o1+.75}" y="${top+3.75}" width="${Math.max(0,x2-o1-1.5)}" height="${HALF-6.5}" class="ovl"/>`})():''}${inRow?`<rect x="${x1}" y="${top+3}" width="${w}" height="${HALF-5}" rx="3" class="sepl"/>`:''}</g>`;
     if(c.dl!=null){const xd=X(c.dl+1);fg+=`<g class="dlm"><title>${esc(ruleText(t,'deadline')+(c.over?`\n${c.over}日超過`:'\n期限内'))}</title><line x1="${xd}" x2="${xd}" y1="${top}" y2="${top+HALF}"/><path d="M${xd} ${top}h-6l3 4z"/></g>`}
     if(c.as!=null){const a1=X(c.as),a2=X(c.aeDraw+1),open=c.ae==null;
-      fg+=`<g data-part="act" data-lid="${t.id}"${inRow?' data-sub="1"':''}><title>${tip}</title><rect x="${a1}" y="${top+HALF+2}" width="${a2-a1}" height="${HALF-5}" rx="3" fill="${ca}"${open?` fill-opacity=".45" stroke="${ca}" stroke-dasharray="4 2"`:''}/></g>`;
+      fg+=`<g data-part="act" data-lid="${t.id}"${inRow?' data-sub="1"':''}><title>${tip}</title><rect x="${a1}" y="${top+HALF+2}" width="${a2-a1}" height="${HALF-5}" rx="3" fill="${ca}"${open?'':` stroke="${edgeC(ca)}" stroke-width="1"`}${open?` fill-opacity=".45" stroke="${ca}" stroke-dasharray="4 2"`:''}/></g>`;
       if(V.lblAct&&!inRow){lb+=`<text x="${a1-4}" y="${top+HALF+13}" class="lb ac" text-anchor="end">${md(c.as)}</text>`;if(!open)lb+=`<text x="${a2+4}" y="${top+HALF+13}" class="lb ac">${md(c.ae)}</text>`}}
     if(c.pin){fg+=`<rect x="${x1-2.5}" y="${top+0.5}" width="${w+5}" height="${HALF}" rx="4" class="ancb"/>`;lb+=`<text x="${x1-3}" y="${top+HALF-3}" class="anct" text-anchor="end"${V.lblStart&&!inRow?' dx="-30"':''}>⚓</text>`}
     if(V.showCrit!==false&&CP.bars.has(t.id))fg+=`<rect x="${x1-1.5}" y="${top+1.5}" width="${w+3}" height="${HALF-2}" rx="4" class="crb" stroke="${S.colors.crit}"><title>クリティカルパス</title></rect>`;
@@ -952,9 +959,9 @@ function renderChart(){
   }
   const ri=$('#relinfo');
   if(info.length&&!drag){ri.innerHTML=`<b>関連付け（${info.length}件）</b><ul>${info.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><small>破線：パスを引いていない関連付け</small>`;ri.style.display='block'}else ri.style.display='none';
-  const mk=(id,c)=>`<marker id="ar-${id}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="${c}"/></marker>`;
+  const mk=(id,c)=>`<marker id="ar-${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0L10 5L0 10z" fill="${c}"/></marker>`;
   csvg.setAttribute('width',W+40);csvg.setAttribute('height',H);
-  csvg.innerHTML=`<defs>${mk('plan',S.colors.linkPlan)}${mk('actual',S.colors.linkAct)}${mk('bad','#d62828')}${mk('rel','#8a929c')}${mk('crit',S.colors.crit)}<pattern id="ovh" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fde4e4"/><rect width="2.5" height="6" fill="#d62828"/></pattern>${[...HP.values()].join('')}</defs><g>${bg}</g><g>${fg}</g><g>${lk}</g><g>${lb}</g>`;
+  csvg.innerHTML=`<defs>${mk('plan',S.colors.linkPlan)}${mk('actual',S.colors.linkAct)}${mk('bad','#d62828')}${mk('rel','#8a929c')}${mk('crit',S.colors.crit)}<pattern id="ovh" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fde4e4"/><rect width="2.5" height="6" fill="#d62828"/></pattern>${[...HP.values()].join('')}</defs><g>${bg}</g><g>${fg}</g><g>${lb}</g><g>${lk}</g>`;
 }
 function renderAll(keepRange){
   const ae=document.activeElement;let fk=null;
@@ -1533,9 +1540,11 @@ const PALETTE=[['#ff0000','赤'],['#ffff00','黄'],['#00ff00','緑'],['#00ffff',
   ['#ff9999','赤（パステル）'],['#ffff99','黄（パステル）'],['#99ff99','緑（パステル）'],['#99ffff','水色（パステル）'],['#9999ff','青（パステル）'],['#ff99ff','紫（パステル）'],
   ['#ffffff','白'],['#c0c0c0','灰（淡）'],['#808080','灰（濃）'],['#000000','黒']];
 const inPal=c=>!!c&&PALETTE.some(p=>p[0]===String(c).toLowerCase());
+/* パスの線の色見本：パステルを除く6色＋灰（濃）・黒 */
+const PALETTE_LINE=PALETTE.filter(([c])=>!/^#(ff9999|ffff99|99ff99|99ffff|9999ff|ff99ff|ffffff|c0c0c0)$/.test(c));
 /* 色見本から選ぶ欄。選んだ色は隠し入力 id に入れて change を出す。def があれば「既定」（値は空）を先頭に置く */
-function palHTML(id,cur,def){cur=String(cur||'').toLowerCase();
-  return`<input type="hidden" id="${id}" value="${esc(cur)}"><span class="pal" data-pal="${id}">${def?`<button type="button" class="sw swd${cur?'':' on'}" data-c="" title="既定の色（${esc(def)}）" style="background:${def}"><span>既定</span></button>`:''}${PALETTE.map(([c,n])=>`<button type="button" class="sw${cur===c?' on':''}" data-c="${c}" title="${n}" style="background:${c}"></button>`).join('')}${cur&&!inPal(cur)?`<button type="button" class="sw on" data-c="${cur}" title="今の色（色見本にない色）" style="background:${cur}"></button>`:''}</span>`}
+function palHTML(id,cur,def,pal=PALETTE){cur=String(cur||'').toLowerCase();
+  return`<input type="hidden" id="${id}" value="${esc(cur)}"><span class="pal" data-pal="${id}">${def?`<button type="button" class="sw swd${cur?'':' on'}" data-c="" title="既定の色（${esc(def)}）" style="background:${def}"><span>既定</span></button>`:''}${pal.map(([c,n])=>`<button type="button" class="sw${cur===c?' on':''}" data-c="${c}" title="${n}" style="background:${c}"></button>`).join('')}${cur&&!pal.some(q=>q[0]===cur)?`<button type="button" class="sw on" data-c="${cur}" title="今の色（色見本にない色）" style="background:${cur}"></button>`:''}</span>`}
 document.addEventListener('click',e=>{const b=e.target.closest('.pal .sw');if(!b)return;e.preventDefault();const pl=b.closest('.pal'),inp=document.getElementById(pl.dataset.pal);if(!inp||inp.disabled)return;
   for(const x of pl.querySelectorAll('.sw'))x.classList.toggle('on',x===b);inp.value=b.dataset.c;inp.dispatchEvent(new Event('change',{bubbles:true}))});
 function openModal(html,wide){const mb=$('#mbox');mb.onchange=mb.onclick=mb.onkeydown=null;mb.classList.toggle('wide',!!wide);mb.innerHTML=html;$('#modal').classList.add('open');modalOpen=true}
@@ -1676,7 +1685,7 @@ function openSettings(){if(!isAdmin())return deny('作業不能期間・色の�
 <p class="hint">土日祝は雨休率に含まれる扱いのため、日数の計算には使いません。日付の色分けと網掛けの表示だけに使います。</p>
 <details style="margin-top:10px"><summary>祝日一覧（${y}年・${y+1}年）</summary><ul class="hl">${hl(y)}${hl(y+1)}</ul></details>
 <h3>既定の色</h3>
-<div class="rr"><span class="hint" style="width:5em">予定バー</span>${palHTML('s-c-plan',S.colors.plan)}</div><div class="rr"><span class="hint" style="width:5em">実施バー</span>${palHTML('s-c-act',S.colors.act)}</div><div class="rr"><span class="hint" style="width:5em">親タスク</span>${palHTML('s-c-parent',S.colors.parent)}</div><div class="rr"><label>予定パス <input type="color" id="s-c-linkPlan" value="${S.colors.linkPlan}"></label><label>実施パス <input type="color" id="s-c-linkAct" value="${S.colors.linkAct}"></label><label>クリティカルパス <input type="color" id="s-c-crit" value="${S.colors.crit}"></label></div>
+<div class="rr"><span class="hint" style="width:5em">予定バー</span>${palHTML('s-c-plan',S.colors.plan)}</div><div class="rr"><span class="hint" style="width:5em">実施バー</span>${palHTML('s-c-act',S.colors.act)}</div><div class="rr"><span class="hint" style="width:5em">親タスク</span>${palHTML('s-c-parent',S.colors.parent)}</div><div class="rr"><span class="hint" style="width:5em">予定パス</span>${palHTML('s-c-linkPlan',S.colors.linkPlan,null,PALETTE_LINE)}</div><div class="rr"><span class="hint" style="width:5em">実施パス</span>${palHTML('s-c-linkAct',S.colors.linkAct,null,PALETTE_LINE)}</div><div class="rr"><span class="hint" style="width:5em">クリティカル<br>パス</span>${palHTML('s-c-crit',S.colors.crit,null,PALETTE_LINE)}</div>
 <p class="hint">バーごとの色は、バーを右クリックして開く詳細設定で変えられます（色見本から選択。「既定」はここの色）。</p>
 <div class="mf"><span class="sp"></span><button class="btn pri" id="s-close">閉じる</button></div>`,true);
   const box=$('#mbox');
